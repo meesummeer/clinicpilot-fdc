@@ -12,10 +12,11 @@
       body: JSON.stringify({ token })
     });
     const data = await res.json();
-    if (!data.ok) { localStorage.removeItem('cp_token'); window.location.href = '/login.html'; }
+    if (!data.ok) { localStorage.removeItem('cp_token'); window.location.href = '/login.html'; return; }
+    document.body.style.display = 'block';
   } catch (e) {
-    // If verify fails due to network, allow through (offline resilience)
-    console.warn('Auth verify failed, allowing through:', e.message);
+    localStorage.removeItem('cp_token');
+    window.location.href = '/login.html';
   }
 })();
 

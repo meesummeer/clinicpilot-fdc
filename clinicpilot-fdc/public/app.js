@@ -326,7 +326,7 @@ function openTab(tab){
 
       const editInvBtn = document.createElement('button');
       editInvBtn.className = 'btn small';
-      editInvBtn.textContent = '✎ Edit';
+      editInvBtn.textContent = 'Edit';
       editInvBtn.onclick = () => openEditInvoiceModal(inv, renderBilling);
 
       const delInvBtn = document.createElement('button');
@@ -334,11 +334,12 @@ function openTab(tab){
       delInvBtn.textContent = 'Delete';
       delInvBtn.onclick = async () => {
         if (!confirm('Delete this invoice and all its payments?')) return;
-        await window.api.invoices.delete(inv.id);
-        // Also delete associated payments
+        // Delete associated payments first, then invoice.
+        // This keeps invoice-status recalculation on payment deletes valid.
         for (const p of invPayments) {
           await window.api.payments.delete(p.id, inv.id);
         }
+        await window.api.invoices.delete(inv.id);
         renderBilling();
       };
 
@@ -429,7 +430,16 @@ function openEditInvoiceModal(inv, onSave) {
     <div class="modal-content">
       <h3 style="margin:0 0 12px 0;">Edit Invoice #${inv.id}</h3>
       <label>Date <input id="eDate" type="date" value="${localYMD(new Date(inv.created_at))}"></label>
-      <label>Procedure <input id="eProc" value="${inv.procedure || ''}"></label>
+      <label>Procedure <input id="eProc" list="editProcList" value="${inv.procedure || ''}"></label>
+      <datalist id="editProcList">
+        <option value="RCT"></option>
+        <option value="Scaling"></option>
+        <option value="Extraction"></option>
+        <option value="Diagnosis"></option>
+        <option value="Filling"></option>
+        <option value="Crown"></option>
+        <option value="Other"></option>
+      </datalist>
       <label>Total Cost (PKR) <input id="eCost" type="number" value="${inv.cost || 0}"></label>
       <label>Lab Cost (PKR) <input id="eLab" type="number" value="${inv.lab_cost || 0}"></label>
       <div style="margin-top:14px;display:flex;gap:8px;justify-content:flex-end;">
@@ -440,10 +450,12 @@ function openEditInvoiceModal(inv, onSave) {
   document.body.appendChild(ov);
   ov.querySelector('#eCancel').onclick = () => ov.remove();
   ov.querySelector('#eSave').onclick = async () => {
+    const procedure = (ov.querySelector('#eProc').value || '').trim();
+    if (!procedure) { alert('Procedure is required'); return; }
     const upd = {
       id: inv.id,
       created_at: new Date(ov.querySelector('#eDate').value + 'T00:00:00').getTime(),
-      procedure: ov.querySelector('#eProc').value,
+      procedure,
       cost: Number(ov.querySelector('#eCost').value || 0),
       lab_cost: Number(ov.querySelector('#eLab').value || 0)
     };

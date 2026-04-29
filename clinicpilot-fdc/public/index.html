@@ -5,6 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>ClinicPilot - Faseeh Dental Clinic</title>
   <link rel="stylesheet" href="style.css">
+  <style>
+    body { display: none; }
+  </style>
 </head>
 <body>
   <div class="brand">
@@ -14,7 +17,7 @@
     </div>
     <div class="brand-right">
       <div class="badge">v1</div>
-      <button onclick="window.api && window.api.auth.logout()" style="background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.22);color:#fff;padding:6px 12px;border-radius:999px;font-size:12px;cursor:pointer;font-weight:600;">Sign Out</button>
+      <button onclick="localStorage.removeItem('cp_token'); window.location.href = '/login.html';" style="background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.22);color:#fff;padding:6px 12px;border-radius:999px;font-size:12px;cursor:pointer;font-weight:600;">Sign Out</button>
     </div>
   </div>
 
