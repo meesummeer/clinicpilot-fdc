@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ClinicPilot - Faseeh Dental Clinic</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="brand">
+    <div class="brand-left"></div>
+    <div class="brand-center">
+      <h1>ClinicPilot <span class="subhead">Faseeh Dental Clinic</span></h1>
+    </div>
+    <div class="brand-right">
+      <div class="badge">v1</div>
+      <button onclick="window.api && window.api.auth.logout()" style="background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.22);color:#fff;padding:6px 12px;border-radius:999px;font-size:12px;cursor:pointer;font-weight:600;">Sign Out</button>
+    </div>
+  </div>
+
+  <div class="wrap">
+    <div class="left">
+      <h3>Patients</h3>
+      <div class="toolbar">
+        <input id="search" placeholder="Search patients...">
+        <button id="newPatient" class="btn primary">+ New</button>
+      </div>
+      <div id="patientList"></div>
+    </div>
+
+    <div class="right">
+      <!-- Home View -->
+      <div id="homeView">
+        <div class="card topCard">
+        <div class="rowBetween">
+          <div class="monthNav">
+            <button id="prevMonth" class="btn ghost">◀</button>
+            <h2 id="monthLabel"></h2>
+            <button id="nextMonth" class="btn ghost">▶</button>
+          </div>
+          <div class="toolbar">
+            <button id="addAppt" class="btn primary">+ Add Appointment</button>
+            <button id="downloadReport" class="btn">Download Monthly Report</button>
+            <button id="deleteAllPatients" class="btn danger">Delete All Patients</button>
+          </div>
+        </div>
+
+        <!-- Legend -->
+        <div class="legend">
+          <span class="legend-item status-yellow">Scheduled</span>
+          <span class="legend-item status-blue">In Progress</span>
+          <span class="legend-item status-green">Fulfilled</span>
+          <span class="legend-item status-red">Cancelled</span>
+        </div>
+        </div>
+
+        <div class="card calendarCard">
+        <div class="dayLabels" id="dayLabels"></div>
+        <div class="calGrid" id="calGrid"></div>
+        </div>
+      </div>
+
+      <!-- Patient Profile -->
+      <div id="profileView" class="hidden">
+        <button id="backHome" class="btn ghost">← Back</button>
+        <div class="card profileCard">
+        <h2 id="profileName"></h2>
+        <p id="profileInfo"></p>
+        <div class="tabs">
+          <div class="tab active" data-tab="profile">Profile</div>
+          <div class="tab" data-tab="soap">SOAP Notes</div>
+          <div class="tab" data-tab="billing">Billing</div>
+        </div>
+        <div id="tabContent"></div>
+        <div class="toolbar">
+          <button id="editPatient" class="btn">Edit Patient</button>
+          <button id="deletePatient" class="btn danger">Delete Patient</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  </div>
+
+  <!-- Drawer for New Patient / Appointment -->
+  <div id="drawer" class="hidden">
+    <h2 id="drawerTitle"></h2>
+    <div id="drawerContent"></div>
+    <div class="toolbar">
+      <button id="drawerSave" class="btn primary">Save</button>
+      <button id="drawerClose" class="btn">Cancel</button>
+    </div>
+  </div>
+
+  <!-- Loading overlay -->
+  <div id="loadingOverlay" class="hidden" style="position:fixed;inset:0;background:rgba(255,255,255,.7);display:grid;place-items:center;z-index:9998;font-size:18px;font-weight:600;color:#009688;">
+    Loading...
+  </div>
+
+  <div class="footer">Powered by CyberHealth Solutions</div>
+
+  <!-- api.js MUST load before app.js — it replaces window.api -->
+  <script src="api.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
