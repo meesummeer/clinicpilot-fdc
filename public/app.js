@@ -111,37 +111,33 @@ function setActiveNav(nav) {
     settings: "#settingsSection"
   };
   $(map[nav])?.classList.add("active");
+
   if (nav !== "patients") hidePatientProfile();
+  else openPatientsSection();
 }
 
-function showPatientBrowse() {
-  $("#patientBrowse")?.classList.remove("hidden");
-  $("#patientProfileView")?.classList.add("hidden");
+/** Fetch full patient list once when entering Patients section. */
+async function refreshPatientsCache() {
+  allPatients = await withLoading(() => window.api.patients.list());
 }
 
-function hidePatientBrowse() {
-  $("#patientBrowse")?.classList.add("hidden");
-  $("#patientProfileView")?.classList.remove("hidden");
-}
-
-function hidePatientProfile() {
-  showPatientBrowse();
-}
-
-async function loadPatients(query = "") {
-  const q = String(query || "").toLowerCase();
+/**
+ * Filter cached patients against #search value (instant, client-side only).
+ */
+function renderPatientList() {
+  const q = String($("#search")?.value || "").toLowerCase();
   const list = $("#patientList");
   if (!list) return;
-  list.innerHTML = '<p class="patientSmall">Loading...</p>';
-  allPatients = await withLoading(() => window.api.patients.list(""));
+  const source = Array.isArray(allPatients) ? allPatients : [];
   const filtered = !q
-    ? allPatients
-    : allPatients.filter((p) => {
+    ? source
+    : source.filter((p) => {
         const n = String(p.name || p["Patient Name"] || "").toLowerCase();
         const ph = String(p.phone || p.Contact || "").toLowerCase();
         const mr = String(p.external_id || p["Case No."] || "").toLowerCase();
         return n.includes(q) || ph.includes(q) || mr.includes(q);
       });
+
   list.innerHTML = "";
   filtered.forEach((p) => {
     const key = patientKey(p);
@@ -164,6 +160,30 @@ async function loadPatients(query = "") {
   if (!filtered.length) list.innerHTML = '<p class="patientSmall">No patients found.</p>';
 }
 
+function openPatientsSection() {
+  showPatientBrowse();
+  const sb = $("#search");
+  if (sb) sb.placeholder = "Search by name, phone, or MR number...";
+  refreshPatientsCache().then(() => renderPatientList()).catch(() => {
+    renderPatientList();
+    showToast("Could not load patients", "error");
+  });
+}
+
+function showPatientBrowse() {
+  $("#patientBrowse")?.classList.remove("hidden");
+  $("#patientProfileView")?.classList.add("hidden");
+}
+
+function hidePatientBrowse() {
+  $("#patientBrowse")?.classList.add("hidden");
+  $("#patientProfileView")?.classList.remove("hidden");
+}
+
+function hidePatientProfile() {
+  showPatientBrowse();
+}
+
 async function openProfile(p) {
   currentPatient = (await withLoading(() => window.api.patients.get(p.id || p.external_id))) || p;
   currentPatientKey = patientKey(currentPatient);
@@ -171,7 +191,7 @@ async function openProfile(p) {
   $("#profileInfo").textContent = `${currentPatient.external_id || "—"} · ${currentPatient.phone || "—"}`;
   hidePatientBrowse();
   await openTab("profile");
-  loadPatients($("#search")?.value || "");
+  renderPatientList();
 }
 
 async function openTab(tab) {
@@ -581,7 +601,8 @@ async function saveDrawer() {
     await window.api.patients.save(p);
     showToast("Patient saved");
     closeDrawer();
-    await loadPatients($("#search").value || "");
+    await refreshPatientsCache();
+    renderPatientList();
   } else {
     const sel = $("#aPatientSelect");
     if (!sel?.value) return showToast("Select patient", "error");
@@ -619,10 +640,10 @@ window.addEventListener("DOMContentLoaded", async () => {
   $("#addAppt").onclick = () => openDrawer("appt");
   $("#drawerClose").onclick = closeDrawer;
   $("#drawerSave").onclick = saveDrawer;
-  $("#search").addEventListener("input", (e) => loadPatients(e.target.value));
+  $("#search").addEventListener("input", () => renderPatientList());
   $("#backToPatients").onclick = () => {
     hidePatientProfile();
-    loadPatients($("#search")?.value || "");
+    renderPatientList();
   };
   $$("#patientTabs .tab").forEach((t) => (t.onclick = () => openTab(t.dataset.tab)));
 
@@ -659,7 +680,8 @@ window.addEventListener("DOMContentLoaded", async () => {
     if (!confirm("Delete ALL patients? This cannot be undone.")) return;
     await withLoading(() => window.api.patients.deleteAll());
     showToast("All patients deleted");
-    loadPatients($("#search").value || "");
+    await refreshPatientsCache();
+    renderPatientList();
   };
   $("#editPatient").onclick = async () => {
     if (!currentPatient) return;
@@ -672,7 +694,8 @@ window.addEventListener("DOMContentLoaded", async () => {
     await window.api.patients.delete(currentPatient.id || currentPatient.external_id);
     showPatientBrowse();
     showToast("Patient deleted");
-    loadPatients($("#search").value || "");
+    await refreshPatientsCache();
+    renderPatientList();
   };
 
   $$(".themeSwatch").forEach((el) => {
@@ -681,6 +704,6 @@ window.addEventListener("DOMContentLoaded", async () => {
 
   $("#billingAllTime").textContent = "All Time";
 
-  await Promise.all([drawCalendar(), loadPatients(""), renderClinicBilling()]);
+  await Promise.all([drawCalendar(), renderClinicBilling()]);
   setActiveNav("home");
 });
