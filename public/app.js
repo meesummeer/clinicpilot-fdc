@@ -177,6 +177,8 @@ function setActiveNav(nav) {
 
   if (nav !== "patients") hidePatientProfile();
   else openPatientsSection();
+
+  if (nav === "billings") renderClinicBilling();
 }
 
 /** Loads patients with global loading spinner; updates `cachedPatients` and list UI. */
@@ -429,19 +431,51 @@ async function renderPatientBilling() {
   });
 }
 
+/** Map MR / Case No / internal id strings to patient display name for clinic billing rows. */
+function buildBillingPatientLookup(patients) {
+  const map = new Map();
+  for (const p of patients || []) {
+    const name = (p.name || p["Patient Name"] || "").trim();
+    const register = (k) => {
+      const key = String(k ?? "").trim();
+      if (!key || !name) return;
+      if (!map.has(key)) map.set(key, name);
+    };
+    register(p.external_id);
+    register(p.id);
+    register(p["Case No."]);
+  }
+  return map;
+}
+
 async function renderClinicBilling() {
-  const ym = $("#billingMonth").value;
+  const monthEl = $("#billingMonth");
+  if (monthEl && !monthEl.value) {
+    const n = new Date();
+    monthEl.value = `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, "0")}`;
+  }
+  const ym = monthEl?.value || "";
+
   const [invoices, payments, patients] = await withLoading(() =>
-    Promise.all([window.api.invoices.all(), window.api.payments.all(), window.api.patients.list("")])
+    Promise.all([window.api.invoices.all(), window.api.payments.all(), window.api.patients.list()])
   );
 
-  const pMap = new Map((patients || []).map((p) => [String(p.external_id), p.name || ""]));
+  const pMap = buildBillingPatientLookup(patients);
   const payByInvoice = (payments || []).reduce((m, p) => {
-    const id = Number(p.invoice_id);
-    if (!m.has(id)) m.set(id, []);
-    m.get(id).push(p);
+    const raw = p.invoice_id;
+    const num = Number(raw);
+    const key = Number.isFinite(num) ? num : String(raw ?? "");
+    if (!m.has(key)) m.set(key, []);
+    m.get(key).push(p);
     return m;
   }, new Map());
+
+  const invoicePaymentsFor = (inv) => {
+    const raw = inv.id;
+    const num = Number(raw);
+    const key = Number.isFinite(num) ? num : String(raw ?? "");
+    return payByInvoice.get(key) || [];
+  };
 
   const filteredInvoices = (invoices || []).filter((inv) => {
     if (billingAllTime) return true;
@@ -451,16 +485,18 @@ async function renderClinicBilling() {
 
   const rows = filteredInvoices
     .map((inv) => {
-      const invPays = payByInvoice.get(Number(inv.id)) || [];
+      const invPays = invoicePaymentsFor(inv);
       const paid = invPays.reduce((s, p) => s + Number(p.amount || 0), 0);
       const total = Number(inv.cost || 0);
       const due = Math.max(0, total - paid);
-      const status = paid <= 0 ? "unpaid" : paid >= total ? "paid" : "partial";
+      const tol = 1e-6;
+      const status = paid <= tol ? "unpaid" : paid + tol >= total ? "paid" : "partial";
+      const pidStr = String(inv.patient_id ?? "").trim();
       return {
         sortTs: inv.created_at ? Number(inv.created_at) : 0,
         dateLabel: fmtInvoiceDateDDMMM(inv.created_at),
-        mr: String(inv.patient_id || ""),
-        name: pMap.get(String(inv.patient_id || "")) || "",
+        mr: pidStr,
+        name: pMap.get(pidStr) || "—",
         procedure: inv.procedure || "",
         total,
         paid,
@@ -471,10 +507,8 @@ async function renderClinicBilling() {
     .sort((a, b) => b.sortTs - a.sortTs);
 
   let sumInvoiced = 0;
-  let sumDueOnRows = 0;
   rows.forEach((r) => {
     sumInvoiced += r.total;
-    sumDueOnRows += r.due;
   });
 
   const paymentsInPeriod = (payments || []).filter((p) => {
@@ -483,6 +517,7 @@ async function renderClinicBilling() {
     return ym ? pd.startsWith(ym) : true;
   });
   const sumCollected = paymentsInPeriod.reduce((s, p) => s + Number(p.amount || 0), 0);
+  const sumOutstanding = sumInvoiced - sumCollected;
 
   const invEl = $("#billingSummaryInvoiced");
   const colEl = $("#billingSummaryCollected");
@@ -490,13 +525,14 @@ async function renderClinicBilling() {
   const fmt = (n) => Number(n || 0).toLocaleString();
   if (invEl) invEl.textContent = rows.length ? fmt(sumInvoiced) : "—";
   if (colEl) colEl.textContent = rows.length ? fmt(sumCollected) : "—";
-  if (outEl) outEl.textContent = rows.length ? fmt(sumDueOnRows) : "—";
+  if (outEl) outEl.textContent = rows.length ? fmt(sumOutstanding) : "—";
 
   const body = $("#clinicBillingBody");
+  if (!body) return;
   body.innerHTML = "";
   rows.forEach((r) => {
     const tr = document.createElement("tr");
-    tr.innerHTML = `<td>${r.dateLabel}</td><td>${r.mr}</td><td>${r.name}</td><td>${r.procedure}</td><td>${r.total.toLocaleString()}</td><td>${r.paid.toLocaleString()}</td><td>${r.due.toLocaleString()}</td><td>${statusBadge(r.status)}</td>`;
+    tr.innerHTML = `<td>${r.dateLabel}</td><td>${escapeHtml(r.mr)}</td><td>${escapeHtml(r.name)}</td><td>${escapeHtml(r.procedure)}</td><td>${r.total.toLocaleString()}</td><td>${r.paid.toLocaleString()}</td><td>${r.due.toLocaleString()}</td><td>${statusBadge(r.status)}</td>`;
     body.appendChild(tr);
   });
   if (!rows.length) {
