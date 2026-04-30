@@ -4,8 +4,71 @@ const $$ = (sel) => Array.from(document.querySelectorAll(sel));
 let currentMonth = new Date();
 let currentPatient = null;
 let currentPatientKey = null;
+/** Last successful `patients.list()` result; null until first fetch completes */
+let cachedPatients = null;
 let allPatients = [];
 let billingAllTime = false;
+
+const BILLING_PROCEDURE_OPTIONS = [
+  "RCT",
+  "Scaling",
+  "Extraction",
+  "Diagnosis",
+  "Filling",
+  "Crown",
+  "Denture",
+  "Bridge",
+  "Implant",
+  "Whitening",
+  "Other"
+];
+
+function escapeHtml(text) {
+  const d = document.createElement("div");
+  d.textContent = text == null ? "" : String(text);
+  return d.innerHTML;
+}
+
+function billingProcedureOptionTags() {
+  return BILLING_PROCEDURE_OPTIONS.map((p) => `<option value="${p}">${p}</option>`).join("");
+}
+
+/** Selected procedure label from a select + optional "Other" text field. */
+function readProcedureChoice(selectEl, otherInputEl) {
+  const v = (selectEl?.value || "").trim();
+  if (v === "Other") return (otherInputEl?.value || "").trim();
+  return v;
+}
+
+function wireBillingProcedureOtherToggle(root, selectSel, wrapSel, inputSel) {
+  const sel = root.querySelector(selectSel);
+  const wrap = root.querySelector(wrapSel);
+  const input = root.querySelector(inputSel);
+  if (!sel || !wrap) return;
+  const sync = () => {
+    const isOther = sel.value === "Other";
+    wrap.classList.toggle("hidden", !isOther);
+    if (!isOther && input) input.value = "";
+  };
+  sel.addEventListener("change", sync);
+  sync();
+}
+
+/** Pre-fill procedure select when stored value may be custom (not in preset list). */
+function applyStoredProcedure(selectEl, otherWrap, otherInput, stored) {
+  const s = String(stored || "").trim();
+  const preset = new Set(BILLING_PROCEDURE_OPTIONS);
+  preset.delete("Other");
+  if (preset.has(s)) {
+    selectEl.value = s;
+    if (otherInput) otherInput.value = "";
+  } else if (s) {
+    selectEl.value = "Other";
+    if (otherInput) otherInput.value = s;
+  } else selectEl.value = BILLING_PROCEDURE_OPTIONS[0];
+  const isOther = selectEl.value === "Other";
+  otherWrap.classList.toggle("hidden", !isOther);
+}
 
 const THEME_MAP = { cyan: "#009688", purple: "#7c3aed", blue: "#1d4ed8" };
 
@@ -116,9 +179,29 @@ function setActiveNav(nav) {
   else openPatientsSection();
 }
 
-/** Fetch full patient list once when entering Patients section. */
+/** Loads patients with global loading spinner; updates `cachedPatients` and list UI. */
 async function refreshPatientsCache() {
-  allPatients = await withLoading(() => window.api.patients.list());
+  try {
+    const list = await withLoading(() => window.api.patients.list());
+    cachedPatients = Array.isArray(list) ? list : [];
+    allPatients = cachedPatients;
+    renderPatientList();
+  } catch (e) {
+    renderPatientList();
+    throw e;
+  }
+}
+
+/** Silent background refresh — keeps cached data on failure. */
+async function refreshPatientsInBackground() {
+  try {
+    const list = await window.api.patients.list();
+    cachedPatients = Array.isArray(list) ? list : [];
+    allPatients = cachedPatients;
+    renderPatientList();
+  } catch (_) {
+    /* stale cache */
+  }
 }
 
 /**
@@ -164,10 +247,16 @@ function openPatientsSection() {
   showPatientBrowse();
   const sb = $("#search");
   if (sb) sb.placeholder = "Search by name, phone, or MR number...";
-  refreshPatientsCache().then(() => renderPatientList()).catch(() => {
+  if (cachedPatients !== null) {
+    allPatients = cachedPatients;
     renderPatientList();
-    showToast("Could not load patients", "error");
-  });
+    refreshPatientsInBackground();
+  } else {
+    refreshPatientsCache().catch(() => {
+      renderPatientList();
+      showToast("Could not load patients", "error");
+    });
+  }
 }
 
 function showPatientBrowse() {
@@ -248,25 +337,34 @@ async function renderPatientBilling() {
   const d = localYMD(new Date());
   c.innerHTML = `
     <div class="invoice-block">
-      <div style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:10px;">
-        <input id="bDate" type="date" value="${d}">
-        <input id="bProcedure" list="procList" placeholder="Procedure" style="flex:1;min-width:140px;">
-        <input id="bCost" type="number" placeholder="Total Cost" style="max-width:120px;">
-        <input id="bLab" type="number" placeholder="Lab Cost" style="max-width:120px;">
-        <button type="button" id="addInvoiceBtn" class="btn btn-primary">+ Add Invoice</button>
+      <div class="billing-add-form">
+        <div class="billing-add-row">
+          <input id="bDate" type="date" value="${d}">
+          <select id="bProcedure" class="billing-select" aria-label="Procedure">${billingProcedureOptionTags()}</select>
+          <input id="bCost" type="number" placeholder="Total Cost" style="max-width:120px;">
+          <input id="bLab" type="number" placeholder="Lab Cost" style="max-width:120px;">
+          <button type="button" id="addInvoiceBtn" class="btn btn-primary">+ Add Invoice</button>
+        </div>
+        <div id="bProcedureOtherWrap" class="billing-other-row hidden">
+          <input id="bProcedureOther" type="text" class="billing-other-input" placeholder="Custom procedure name">
+        </div>
+        <textarea id="bNotes" class="billing-notes" placeholder="Treatment notes, observations..." rows="3"></textarea>
       </div>
-      <datalist id="procList"><option>RCT</option><option>Scaling</option><option>Extraction</option><option>Diagnosis</option><option>Filling</option><option>Crown</option><option>Other</option></datalist>
       <div id="billingList"></div>
     </div>`;
+  wireBillingProcedureOtherToggle(c, "#bProcedure", "#bProcedureOtherWrap", "#bProcedureOther");
+
   $("#addInvoiceBtn").onclick = async () => {
-    const procedure = ($("#bProcedure").value || "").trim();
+    const procedure = readProcedureChoice($("#bProcedure"), $("#bProcedureOther"));
     if (!procedure) return showToast("Procedure is required", "error");
+    const notes = ($("#bNotes").value || "").trim();
     await window.api.invoices.add({
       patient_id: pid,
       procedure,
       cost: Number($("#bCost").value || 0),
       lab_cost: Number($("#bLab").value || 0),
-      created_at: new Date(($("#bDate").value || d) + "T00:00:00").getTime()
+      created_at: new Date(($("#bDate").value || d) + "T00:00:00").getTime(),
+      notes
     });
     showToast("Invoice added");
     renderPatientBilling();
@@ -288,8 +386,11 @@ async function renderPatientBilling() {
     const due = Math.max(0, Number(inv.cost || 0) - paid);
     const card = document.createElement("div");
     card.className = "invoice-block";
+    const notesHtml = inv.notes
+      ? `<p class="patientSmall invoice-notes-line" style="margin:6px 0 0;line-height:1.4">${escapeHtml(inv.notes)}</p>`
+      : "";
     card.innerHTML = `
-      <div class="pane-head" style="margin-bottom:8px;"><b>${inv.procedure || ""}</b>${statusBadge(inv.status)}<span class="patientSmall">${fmtInvoiceDateDDMMM(inv.created_at)}</span></div>
+      <div class="pane-head" style="margin-bottom:8px;"><b>${escapeHtml(inv.procedure || "")}</b>${statusBadge(inv.status)}<span class="patientSmall">${fmtInvoiceDateDDMMM(inv.created_at)}</span></div>${notesHtml}
       <div style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:8px;font-size:0.875rem;">
         <span>Total: ${Number(inv.cost || 0).toLocaleString()}</span><span>Lab: ${Number(inv.lab_cost || 0).toLocaleString()}</span>
         <span>Paid: ${paid.toLocaleString()}</span><span>Due: ${due.toLocaleString()}</span>
@@ -471,30 +572,42 @@ function openPaymentModal(inv, patient_id, onSave) {
 function openEditInvoiceModal(inv, onSave) {
   const ov = document.createElement("div");
   ov.className = "modal";
-  ov.innerHTML = `<div class="modal-content">
+  ov.innerHTML = `<div class="modal-content modal-content--billing">
     <h3>Edit Invoice #${inv.id}</h3>
     <label>Date</label><input id="eDate" type="date" value="${localYMD(new Date(inv.created_at))}">
-    <label>Procedure</label><input id="eProc" list="editProcList">
-    <datalist id="editProcList"><option>RCT</option><option>Scaling</option><option>Extraction</option><option>Diagnosis</option><option>Filling</option><option>Crown</option><option>Other</option></datalist>
+    <label>Procedure</label>
+    <select id="eProcedure" class="billing-select">${billingProcedureOptionTags()}</select>
+    <div id="eProcedureOtherWrap" class="billing-other-row hidden">
+      <input id="eProcedureOther" type="text" class="billing-other-input" placeholder="Custom procedure name">
+    </div>
     <label>Total Cost</label><input id="eCost" type="number" value="${Number(inv.cost || 0)}">
     <label>Lab Cost</label><input id="eLab" type="number" value="${Number(inv.lab_cost || 0)}">
+    <label>Notes</label>
+    <textarea id="eNotes" class="billing-notes" placeholder="Treatment notes, observations..." rows="3"></textarea>
     <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px;">
       <button type="button" id="eCancel" class="btn btn-secondary">Cancel</button>
       <button type="button" id="eSave" class="btn btn-primary">Save</button>
     </div>
   </div>`;
   document.body.appendChild(ov);
-  ov.querySelector("#eProc").value = inv.procedure || "";
+  const mc = ov.querySelector(".modal-content");
+  applyStoredProcedure(ov.querySelector("#eProcedure"), ov.querySelector("#eProcedureOtherWrap"), ov.querySelector("#eProcedureOther"), inv.procedure || "");
+  wireBillingProcedureOtherToggle(mc, "#eProcedure", "#eProcedureOtherWrap", "#eProcedureOther");
+  ov.querySelector("#eNotes").value = inv.notes ?? "";
   ov.querySelector("#eCancel").onclick = () => ov.remove();
   ov.querySelector("#eSave").onclick = async () => {
-    const procedure = (ov.querySelector("#eProc").value || "").trim();
+    const sel = ov.querySelector("#eProcedure");
+    const otherIn = ov.querySelector("#eProcedureOther");
+    const procedure = readProcedureChoice(sel, otherIn);
     if (!procedure) return showToast("Procedure is required", "error");
+    const notes = (ov.querySelector("#eNotes").value || "").trim();
     await window.api.invoices.update({
       id: inv.id,
       created_at: new Date(`${ov.querySelector("#eDate").value}T00:00:00`).getTime(),
       procedure,
       cost: Number(ov.querySelector("#eCost").value || 0),
-      lab_cost: Number(ov.querySelector("#eLab").value || 0)
+      lab_cost: Number(ov.querySelector("#eLab").value || 0),
+      notes
     });
     showToast("Invoice updated");
     ov.remove();

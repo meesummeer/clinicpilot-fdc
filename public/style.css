@@ -167,14 +167,15 @@ body {
 .main {
   margin-left: 220px;
   min-width: 0;
-  min-height: 100vh;
-  display: flex;
-  flex-direction: column;
+  height: 100vh;
+  overflow-y: auto;
   background: var(--bg);
 }
 
 .topbar {
-  flex-shrink: 0;
+  position: sticky;
+  top: 0;
+  z-index: 10;
   height: 56px;
   padding: 0 24px;
   display: flex;
@@ -191,9 +192,6 @@ body {
 }
 
 .workspace {
-  flex: 1;
-  min-height: 0;
-  overflow: auto;
   padding: 20px 24px 28px;
 }
 
@@ -231,20 +229,20 @@ body {
 }
 
 .cal-wrap {
-  padding-top: 12px;
+  padding-top: 8px;
 }
 
 .monthNav {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
 }
 
 .month-title {
   margin: 0;
-  min-width: 200px;
+  min-width: 180px;
   text-align: center;
-  font-size: 1.25rem;
+  font-size: 1.1rem;
   font-weight: 700;
 }
 
@@ -272,31 +270,31 @@ body {
 .dayLabels {
   display: grid;
   grid-template-columns: repeat(7, 1fr);
-  gap: 6px;
-  margin-bottom: 6px;
+  gap: 4px;
+  margin-bottom: 4px;
 }
 
 .dayLabels .day {
   text-align: center;
-  font-size: 0.75rem;
+  font-size: 0.6875rem;
   font-weight: 600;
   color: var(--muted);
-  padding: 6px;
+  padding: 4px 2px;
 }
 
 .calGrid {
   display: grid;
   grid-template-columns: repeat(7, 1fr);
-  gap: 8px;
-  min-height: 480px;
+  gap: 6px;
+  min-height: 0;
 }
 
 .cell {
-  min-height: 108px;
+  min-height: 64px;
   background: var(--card);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: 8px;
+  padding: 6px;
 }
 
 .cell.empty {
@@ -305,17 +303,17 @@ body {
 }
 
 .cell .date {
-  font-size: 0.75rem;
+  font-size: 0.6875rem;
   font-weight: 600;
   color: var(--muted);
 }
 
 .appt {
-  margin-top: 6px;
-  padding: 5px 7px;
-  border-radius: 8px;
-  font-size: 0.6875rem;
-  line-height: 1.3;
+  margin-top: 4px;
+  padding: 3px 5px;
+  border-radius: 6px;
+  font-size: 0.625rem;
+  line-height: 1.25;
   cursor: pointer;
   border: 1px solid transparent;
 }
@@ -527,6 +525,79 @@ body {
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background: #fafafa;
+}
+
+.billing-add-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.billing-add-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 10px;
+}
+
+.billing-select {
+  min-height: 44px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font: inherit;
+  background: var(--card);
+  min-width: 140px;
+  flex: 1 1 auto;
+}
+
+.billing-other-row {
+  margin-top: 2px;
+}
+
+.billing-other-input {
+  width: 100%;
+  min-height: 44px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font: inherit;
+  box-sizing: border-box;
+}
+
+.billing-notes {
+  width: 100%;
+  min-height: 72px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font: inherit;
+  resize: vertical;
+  box-sizing: border-box;
+}
+
+.invoice-notes-line {
+  color: var(--muted);
+  white-space: pre-wrap;
+}
+
+.modal-content.modal-content--billing {
+  width: min(460px, 100%);
+}
+
+.modal-content--billing label {
+  display: block;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  margin-top: 10px;
+  margin-bottom: 4px;
+  color: var(--muted);
+}
+
+.modal-content--billing .billing-select,
+.modal-content--billing .billing-other-input {
+  width: 100%;
 }
 
 .soap-note-row {
