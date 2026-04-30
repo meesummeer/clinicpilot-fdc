@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ClinicPilot - Login</title>
+  <link rel="stylesheet" href="style.css">
+  <style>
+    body { display: grid; place-items: center; min-height: 100vh; background: var(--bg); }
+    .login-card {
+      background: var(--card);
+      border: 1px solid #e1e8e8;
+      border-radius: 20px;
+      padding: 36px 32px;
+      width: 360px;
+      max-width: 92vw;
+      box-shadow: 0 20px 60px rgba(0,0,0,.10);
+      text-align: center;
+    }
+    .login-logo {
+      display: inline-block;
+      background: linear-gradient(135deg, var(--accent), #00c4b4 70%);
+      color: #fff;
+      padding: 10px 20px;
+      border-radius: 12px;
+      font-size: 18px;
+      font-weight: 800;
+      letter-spacing: .2px;
+      margin-bottom: 6px;
+    }
+    .login-sub {
+      font-size: 13px;
+      color: var(--muted);
+      margin-bottom: 28px;
+    }
+    .login-card input[type="password"] {
+      width: 100%;
+      padding: 12px 14px;
+      border-radius: 12px;
+      border: 1px solid #ccd;
+      font-size: 15px;
+      margin-bottom: 14px;
+      text-align: center;
+      letter-spacing: 3px;
+    }
+    .login-card input[type="password"]:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(0,150,136,.15);
+      outline: none;
+    }
+    .login-btn {
+      width: 100%;
+      padding: 12px;
+      font-size: 15px;
+      font-weight: 700;
+      border-radius: 14px;
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      cursor: pointer;
+      transition: .15s;
+    }
+    .login-btn:hover { filter: brightness(1.08); transform: translateY(-1px); }
+    .login-btn:active { transform: translateY(0); }
+    .login-btn:disabled { opacity: .6; cursor: not-allowed; transform: none; }
+    .error-msg {
+      color: var(--danger);
+      font-size: 13px;
+      margin-top: 10px;
+      min-height: 18px;
+    }
+    .login-footer {
+      margin-top: 28px;
+      font-size: 11px;
+      color: #b0bec5;
+    }
+  </style>
+</head>
+<body>
+  <div class="login-card">
+    <div class="login-logo">ClinicPilot</div>
+    <div class="login-sub">Faseeh Dental Clinic</div>
+
+    <input type="password" id="pwInput" placeholder="Enter password" autocomplete="current-password">
+    <button class="login-btn" id="loginBtn">Sign In</button>
+    <div class="error-msg" id="errMsg"></div>
+
+    <div class="login-footer">Powered by CyberHealth Solutions</div>
+  </div>
+
+  <script>
+    const pwInput = document.getElementById('pwInput');
+    const loginBtn = document.getElementById('loginBtn');
+    const errMsg = document.getElementById('errMsg');
+
+    async function doLogin() {
+      const password = pwInput.value;
+      if (!password) return;
+      loginBtn.disabled = true;
+      loginBtn.textContent = 'Signing in...';
+      errMsg.textContent = '';
+
+      try {
+        const res = await fetch('/api/auth-login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ password })
+        });
+        const data = await res.json();
+        if (data.ok && data.token) {
+          localStorage.setItem('cp_token', data.token);
+          window.location.href = '/';
+        } else {
+          errMsg.textContent = 'Incorrect password. Try again.';
+          loginBtn.disabled = false;
+          loginBtn.textContent = 'Sign In';
+          pwInput.value = '';
+          pwInput.focus();
+        }
+      } catch (e) {
+        errMsg.textContent = 'Connection error. Try again.';
+        loginBtn.disabled = false;
+        loginBtn.textContent = 'Sign In';
+      }
+    }
+
+    loginBtn.onclick = doLogin;
+    pwInput.addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
+    pwInput.focus();
+  </script>
+</body>
+</html>

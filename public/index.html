@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ClinicPilot - Faseeh Dental Clinic</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+  <style>body{display:none}</style>
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar">
+      <div class="sidebar-brand">
+        <div class="sidebar-brand__logo" aria-hidden="true"></div>
+        <div class="sidebar-brand__text">
+          <span class="sidebar-brand__title">ClinicPilot</span>
+          <span class="sidebar-brand__subtitle">Faseeh Dental Clinic</span>
+        </div>
+      </div>
+      <nav class="sidebar-main" aria-label="Primary navigation">
+        <button type="button" class="nav-btn active" data-nav="home"><span class="nav-btn__label">Home</span></button>
+        <button type="button" class="nav-btn" data-nav="patients"><span class="nav-btn__label">Patients</span></button>
+        <button type="button" class="nav-btn" data-nav="billings"><span class="nav-btn__label">Billings</span></button>
+      </nav>
+      <div class="sidebar-footer">
+        <button type="button" class="nav-btn" data-nav="settings"><span class="nav-btn__label">Settings</span></button>
+        <button type="button" class="sign-out-btn" onclick="localStorage.removeItem('cp_token'); window.location.href='/login.html';">Sign Out</button>
+      </div>
+    </aside>
+
+    <div class="main">
+      <header class="topbar">
+        <h1 class="topbar-title" id="pageTitle">Home</h1>
+      </header>
+      <div class="workspace" id="workspace">
+        <!-- Print banner (shown only when printing Billings) -->
+        <div class="print-header" id="printPageHeader" aria-hidden="true"></div>
+
+        <section id="homeSection" class="pane active">
+          <div class="card">
+            <div class="pane-head">
+              <div class="monthNav">
+                <button type="button" id="prevMonth" class="btn btn-ghost" aria-label="Previous month">◀</button>
+                <h2 class="month-title" id="monthLabel"></h2>
+                <button type="button" id="nextMonth" class="btn btn-ghost" aria-label="Next month">▶</button>
+              </div>
+              <button type="button" id="addAppt" class="btn btn-primary">+ Add Appointment</button>
+            </div>
+            <div class="legend">
+              <span class="legend-pill lg-yellow">Scheduled</span>
+              <span class="legend-pill lg-blue">In Progress</span>
+              <span class="legend-pill lg-green">Fulfilled</span>
+              <span class="legend-pill lg-red">Cancelled</span>
+            </div>
+          </div>
+          <div class="card cal-wrap">
+            <div class="dayLabels" id="dayLabels"></div>
+            <div class="calGrid" id="calGrid"></div>
+          </div>
+        </section>
+
+        <section id="patientsSection" class="pane">
+          <div id="patientBrowse">
+            <div class="pane-head patients-toolbar">
+              <input type="text" id="search" class="search-wide" placeholder="Search by name, phone, or MR number…" autocomplete="off">
+              <button type="button" id="newPatient" class="btn btn-primary">+ New Patient</button>
+            </div>
+            <div id="patientList" class="patient-list"></div>
+          </div>
+          <div id="patientProfileView" class="patient-profile hidden">
+            <button type="button" id="backToPatients" class="btn btn-ghost back-btn">← Back</button>
+            <div class="card profile-card">
+              <h2 id="profileName" class="profile-name"></h2>
+              <p id="profileInfo" class="profile-sub"></p>
+              <div class="tabs" id="patientTabs">
+                <button type="button" class="tab active" data-tab="profile">Profile</button>
+                <button type="button" class="tab" data-tab="soap">SOAP Notes</button>
+                <button type="button" class="tab" data-tab="billing">Billing</button>
+              </div>
+              <div id="tabContent"></div>
+              <div class="pane-foot">
+                <button type="button" id="editPatient" class="btn btn-secondary">Edit Patient</button>
+                <button type="button" id="deletePatient" class="btn btn-danger">Delete Patient</button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section id="billingsSection" class="pane">
+          <div class="billing-toolbar card toolbar-row screen-only">
+            <div class="toolbar-left">
+              <input type="month" id="billingMonth" class="input-month">
+              <button type="button" id="billingAllTime" class="btn btn-secondary">All Time</button>
+              <button type="button" id="downloadPdf" class="btn btn-secondary">Download PDF</button>
+            </div>
+          </div>
+          <div class="billing-kpis card screen-only">
+            <div class="kpi-card">
+              <span class="kpi-label">Total Invoiced</span>
+              <span class="kpi-value" id="billingSummaryInvoiced">—</span>
+            </div>
+            <div class="kpi-card">
+              <span class="kpi-label">Total Collected</span>
+              <span class="kpi-value" id="billingSummaryCollected">—</span>
+            </div>
+            <div class="kpi-card">
+              <span class="kpi-label">Outstanding</span>
+              <span class="kpi-value" id="billingSummaryOutstanding">—</span>
+            </div>
+          </div>
+          <div class="card billing-table-card">
+            <div class="table-scroll">
+              <table class="billing-table">
+                <thead>
+                  <tr>
+                    <th>Date</th><th>MR No</th><th>Patient Name</th><th>Procedure</th>
+                    <th>Invoice Total</th><th>Paid</th><th>Due</th><th>Status</th>
+                  </tr>
+                </thead>
+                <tbody id="clinicBillingBody"></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <section id="settingsSection" class="pane settings-pane">
+          <h2 class="settings-heading">Settings</h2>
+          <div class="card settings-block">
+            <h3 class="settings-block-title">App Theme</h3>
+            <div class="theme-swatches">
+              <button type="button" class="themeSwatch" data-theme="cyan" aria-pressed="true"><span class="theme-dot" style="background:#009688"></span><span>Cyan</span></button>
+              <button type="button" class="themeSwatch" data-theme="purple" aria-pressed="false"><span class="theme-dot" style="background:#7c3aed"></span><span>Purple</span></button>
+              <button type="button" class="themeSwatch" data-theme="blue" aria-pressed="false"><span class="theme-dot" style="background:#1d4ed8"></span><span>Blue</span></button>
+            </div>
+          </div>
+          <div class="card settings-block">
+            <h3 class="settings-block-title">Backup to Google Sheets</h3>
+            <p class="settings-desc">Sync all patient and billing data to Google Sheets.</p>
+            <button type="button" id="backupDataBtn" class="btn btn-primary">Run Backup</button>
+          </div>
+          <div class="card settings-block settings-danger">
+            <h3 class="settings-block-title danger-t">Danger Zone</h3>
+            <button type="button" id="deleteAllPatients" class="btn btn-danger">Delete All Patients</button>
+          </div>
+        </section>
+      </div>
+    </div>
+  </div>
+
+  <aside id="drawer" class="drawer hidden" aria-hidden="true">
+    <div class="drawer-inner">
+      <h2 id="drawerTitle" class="drawer-title"></h2>
+      <div id="drawerContent" class="drawer-content"></div>
+      <div class="drawer-actions">
+        <button type="button" id="drawerSave" class="btn btn-primary">Save</button>
+        <button type="button" id="drawerClose" class="btn btn-secondary">Cancel</button>
+      </div>
+    </div>
+  </aside>
+
+  <div id="loadingOverlay" class="loading-overlay hidden">
+    <div class="loading-spinner"></div>
+  </div>
+  <div id="toastHost" class="toast-host"></div>
+
+  <script src="api.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
