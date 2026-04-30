@@ -149,10 +149,41 @@ function applyTheme(themeKey) {
   document.documentElement.style.setProperty("--accent", THEME_MAP[key]);
   localStorage.setItem("cp_theme", key);
   $$(".themeSwatch").forEach((b) => {
-    const on = b.dataset.theme === key;
+    const swatchTheme = b.dataset.theme;
+    const on = swatchTheme === key;
     b.classList.toggle("active", on);
     b.setAttribute("aria-pressed", on ? "true" : "false");
+    const dot = b.querySelector(".themeSwatch-dot");
+    if (dot) {
+      const accent = THEME_MAP[swatchTheme] || THEME_MAP.cyan;
+      dot.style.boxShadow = on ? `0 0 0 3px var(--bg, #f1f5f9), 0 0 0 6px ${accent}` : "none";
+    }
   });
+}
+
+/** Build Settings pane (Markup + IDs) — index.html untouched; avoids stylesheet edits for circle swatches. */
+function mountSettingsSection() {
+  const sec = $("#settingsSection");
+  if (!sec) return;
+  const swatchBtn = (id, hex, label) =>
+    `<button type="button" class="themeSwatch" data-theme="${id}" aria-pressed="false" style="display:inline-flex;flex-direction:column;align-items:center;gap:8px;border:none;background:transparent;cursor:pointer;padding:10px;font:inherit;color:inherit;font-weight:600;font-size:0.875rem">
+      <span class="themeSwatch-dot" style="display:block;width:48px;height:48px;border-radius:50%;background:${hex};flex-shrink:0;margin:2px;"></span>
+      <span>${label}</span>
+    </button>`;
+  sec.innerHTML = `
+    <div class="card settings-block">
+      <h3 class="settings-block-title">App Theme</h3>
+      <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:4px">${swatchBtn("cyan", "#009688", "Cyan")}${swatchBtn("purple", "#7c3aed", "Purple")}${swatchBtn("blue", "#1d4ed8", "Blue")}</div>
+    </div>
+    <div class="card settings-block">
+      <h3 class="settings-block-title">Backup to Google Sheets</h3>
+      <p class="settings-desc">Export all patient and billing data to Google Sheets.</p>
+      <button type="button" id="backupDataBtn" class="btn btn-primary">Run Backup</button>
+    </div>
+    <div class="card settings-block" style="border-left:4px solid #dc2626">
+      <h3 class="settings-block-title danger-t">Danger Zone</h3>
+      <button type="button" id="deleteAllPatients" class="btn btn-danger">Delete All Patients</button>
+    </div>`;
 }
 
 function setActiveNav(nav) {
@@ -771,6 +802,7 @@ async function saveDrawer() {
 }
 
 window.addEventListener("DOMContentLoaded", async () => {
+  mountSettingsSection();
   applyTheme(localStorage.getItem("cp_theme") || "cyan");
   const m = new Date();
   $("#billingMonth").value = `${m.getFullYear()}-${String(m.getMonth() + 1).padStart(2, "0")}`;
@@ -818,11 +850,13 @@ window.addEventListener("DOMContentLoaded", async () => {
     try {
       const res = await withLoading(() => window.api.patients.syncSheets());
       if (res?.ok === false) throw new Error(res.error || "Backup failed");
-      showToast(
-        typeof res?.count === "number" ? `Backup completed (${res.count} rows)` : "Backup completed"
+      window.alert(
+        typeof res === "object" && res !== null
+          ? JSON.stringify(res)
+          : String(res ?? "Backup completed.")
       );
     } catch (e) {
-      showToast(`Backup failed: ${e.message}`, "error");
+      window.alert(`Backup failed: ${e.message || String(e)}`);
     }
   };
   $("#deleteAllPatients").onclick = async () => {
