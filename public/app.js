@@ -9,6 +9,75 @@ let cachedPatients = null;
 let allPatients = [];
 let billingAllTime = false;
 
+/** Cached patient billing payloads for optimistic list updates between refetches */
+let billingDataCache = { pid: null, invoices: [], payments: [] };
+
+let savingPeekCount = 0;
+
+function formatDate(d) {
+  const date = d instanceof Date ? d : new Date(d);
+  if (Number.isNaN(date.getTime())) return "—";
+  return date.toLocaleDateString("en-GB");
+}
+
+function displayDateTs(ts) {
+  if (ts == null || ts === "") return "—";
+  const d = new Date(ts);
+  if (Number.isNaN(d.getTime())) return "—";
+  return formatDate(d);
+}
+
+/** Display ISO date-only strings like YYYY-MM-DD as DD/MM/YYYY without TZ shift issues. */
+function displayDateYYYYMMDD(raw) {
+  if (raw == null || raw === "") return "—";
+  const s = String(raw).trim();
+  const m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (m) return formatDate(new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])));
+  return formatDate(s);
+}
+
+function pkMoney(n) {
+  return `PKR ${Number(n || 0).toLocaleString()}`;
+}
+
+function ensureSavingPeekEl() {
+  let el = document.getElementById("savingPeek");
+  if (!el) {
+    el = document.createElement("div");
+    el.id = "savingPeek";
+    el.className = "saving-peek";
+    el.setAttribute("aria-live", "polite");
+    el.textContent = "Saving…";
+    document.body.appendChild(el);
+  }
+  return el;
+}
+
+function showSavingPeek() {
+  savingPeekCount += 1;
+  ensureSavingPeekEl().classList.add("visible");
+}
+
+function hideSavingPeek() {
+  savingPeekCount = Math.max(0, savingPeekCount - 1);
+  if (savingPeekCount === 0) ensureSavingPeekEl().classList.remove("visible");
+}
+
+async function reloadPatientBillingQuiet() {
+  const pid = currentPatient?.id ?? currentPatient?.external_id;
+  if (!pid || !$("#billingList")) return;
+  try {
+    const [inv, pay] = await Promise.all([
+      window.api.invoices.list(pid),
+      window.api.payments.list({ patient_id: pid })
+    ]);
+    billingDataCache = { pid, invoices: inv || [], payments: pay || [] };
+    paintBillingInvoiceCards();
+  } catch (_) {
+    /* optimistic path may continue */
+  }
+}
+
 const BILLING_PROCEDURE_OPTIONS = [
   "RCT",
   "Scaling",
@@ -111,16 +180,6 @@ function showToast(message, type = "success") {
 
 function localYMD(d) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-}
-
-function fmtInvoiceDateDDMMM(ts) {
-  if (ts == null || ts === "") return "—";
-  const d = new Date(ts);
-  if (Number.isNaN(d.getTime())) return "—";
-  const day = String(d.getDate()).padStart(2, "0");
-  const mon = d.toLocaleString("en-GB", { month: "short" });
-  const yr = d.getFullYear();
-  return `${day} ${mon} ${yr}`;
 }
 
 function patientKey(p) {
@@ -341,7 +400,7 @@ async function openTab(tab) {
       notes.forEach((n) => {
         const r = document.createElement("div");
         r.className = "soap-note-row";
-        r.innerHTML = `<div>${new Date(n.at).toLocaleString()}: ${n.text}</div><button type="button" class="btn btn-danger btn-small">×</button>`;
+        r.innerHTML = `<div>${displayDateTs(n.at)} ${new Date(n.at).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}: ${escapeHtml(n.text)}</div><button type="button" class="btn btn-danger btn-small">×</button>`;
         r.querySelector("button").onclick = async () => {
           await window.api.notes.delete({ patient_id: pid, note_id: n.id });
           showToast("Note deleted");
@@ -362,6 +421,85 @@ async function openTab(tab) {
     return;
   }
   await renderPatientBilling();
+}
+
+function paintBillingInvoiceCards() {
+  const pid = currentPatient?.id ?? currentPatient?.external_id;
+  const list = $("#billingList");
+  if (!list) return;
+  if (!billingDataCache.pid || billingDataCache.pid !== pid) {
+    list.innerHTML = '<p class="patientSmall">Loading…</p>';
+    return;
+  }
+
+  const { invoices, payments } = billingDataCache;
+  list.innerHTML = "";
+  if (!invoices.length) {
+    list.innerHTML = '<p class="patientSmall">No invoices yet.</p>';
+    return;
+  }
+
+  invoices.forEach((inv) => {
+    const invPayments = payments.filter((p) => String(p.invoice_id) === String(inv.id));
+    const paid = invPayments.reduce((s, p) => s + Number(p.amount || 0), 0);
+    const total = Number(inv.cost || 0);
+    const due = Math.max(0, total - paid);
+    const card = document.createElement("div");
+    card.className = "invoice-block";
+    const synced = !inv.__optimistic;
+    const notesHtml = inv.notes
+      ? `<p class="patientSmall invoice-notes-line" style="margin:6px 0 0;line-height:1.4">${escapeHtml(inv.notes)}</p>`
+      : "";
+    const actionsHtml = synced
+      ? `<div style="display:flex;gap:8px;margin-bottom:8px;">
+        <button type="button" class="btn btn-primary btn-small addPay">+ Payment</button>
+        <button type="button" class="btn btn-secondary btn-small editInv">Edit</button>
+        <button type="button" class="btn btn-danger btn-small delInv">Delete</button>
+      </div>`
+      : `<p class="patientSmall" style="margin-bottom:8px;">Saving invoice…</p>`;
+    card.innerHTML = `
+      <div class="pane-head" style="margin-bottom:8px;"><b>${escapeHtml(inv.procedure || "")}</b>${synced ? statusBadge(inv.status) : ""}<span class="patientSmall">${displayDateTs(inv.created_at)}</span></div>${notesHtml}
+      <div style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:8px;font-size:0.875rem;">
+        <span>Total: ${Number(inv.cost || 0).toLocaleString()}</span><span>Lab: ${Number(inv.lab_cost || 0).toLocaleString()}</span>
+        <span>Paid: ${paid.toLocaleString()}</span><span>Due: ${due.toLocaleString()}</span>
+      </div>
+      ${actionsHtml}
+      <div class="table-scroll">
+        <table class="billing-table"><thead><tr><th>Date</th><th>Amount</th><th>Mode</th><th></th></tr></thead><tbody></tbody></table>
+      </div>`;
+    const tb = card.querySelector("tbody");
+    invPayments
+      .sort((a, b) => String(a.date).localeCompare(String(b.date)))
+      .forEach((p) => {
+        const tr = document.createElement("tr");
+        const tail = p.__optimistic ? "<td></td>" : '<td><button type="button" class="btn btn-danger btn-small">×</button></td>';
+        tr.innerHTML = `<td>${displayDateYYYYMMDD(p.date)}</td><td>${Number(p.amount).toLocaleString()}</td><td>${escapeHtml(String(p.payment_mode || ""))}</td>${tail}`;
+        const delBtn = tr.querySelector("button");
+        if (delBtn && !p.__optimistic) {
+          delBtn.onclick = async () => {
+            await window.api.payments.delete(p.id, inv.id);
+            showToast("Payment deleted");
+            await renderPatientBilling();
+          };
+        }
+        tb.appendChild(tr);
+      });
+    const addPay = card.querySelector(".addPay");
+    if (addPay) addPay.onclick = () => openPaymentModal(inv, pid);
+    const editInv = card.querySelector(".editInv");
+    if (editInv) editInv.onclick = () => openEditInvoiceModal(inv, () => reloadPatientBillingQuiet());
+    const delInv = card.querySelector(".delInv");
+    if (delInv) {
+      delInv.onclick = async () => {
+        if (!confirm("Delete this invoice and all its payments?")) return;
+        for (const p of invPayments) await window.api.payments.delete(p.id, inv.id);
+        await window.api.invoices.delete(inv.id);
+        showToast("Invoice deleted");
+        await renderPatientBilling();
+      };
+    }
+    list.appendChild(card);
+  });
 }
 
 async function renderPatientBilling() {
@@ -391,75 +529,65 @@ async function renderPatientBilling() {
     const procedure = readProcedureChoice($("#bProcedure"), $("#bProcedureOther"));
     if (!procedure) return showToast("Procedure is required", "error");
     const notes = ($("#bNotes").value || "").trim();
-    await window.api.invoices.add({
+    const costVal = Number($("#bCost").value || 0);
+    const labVal = Number($("#bLab").value || 0);
+    const dateStr = $("#bDate").value || d;
+    const createdAtMs = new Date(`${dateStr}T12:00:00`).getTime();
+
+    const snap = {
+      invoices: billingDataCache.invoices.map((x) => ({ ...x })),
+      payments: billingDataCache.payments.map((x) => ({ ...x }))
+    };
+
+    const optimisticId = `opt-inv-${Date.now()}`;
+    const optimisticInv = {
+      __optimistic: true,
+      id: optimisticId,
       patient_id: pid,
       procedure,
-      cost: Number($("#bCost").value || 0),
-      lab_cost: Number($("#bLab").value || 0),
-      created_at: new Date(($("#bDate").value || d) + "T00:00:00").getTime(),
-      notes
-    });
-    showToast("Invoice added");
-    renderPatientBilling();
+      cost: costVal,
+      lab_cost: labVal,
+      created_at: createdAtMs,
+      notes,
+      status: "unpaid"
+    };
+
+    billingDataCache = {
+      pid,
+      invoices: [optimisticInv, ...(billingDataCache.pid === pid ? billingDataCache.invoices : [])],
+      payments: billingDataCache.pid === pid ? [...billingDataCache.payments] : []
+    };
+
+    paintBillingInvoiceCards();
+    showSavingPeek();
+    try {
+      await window.api.invoices.add({
+        patient_id: pid,
+        procedure,
+        cost: costVal,
+        lab_cost: labVal,
+        created_at: new Date((dateStr || d) + "T12:00:00").getTime(),
+        notes
+      });
+      showToast("Invoice added");
+      await reloadPatientBillingQuiet();
+    } catch (e) {
+      billingDataCache = { pid, invoices: snap.invoices, payments: snap.payments };
+      paintBillingInvoiceCards();
+      showToast(e.message || "Could not save invoice", "error");
+    } finally {
+      hideSavingPeek();
+    }
   };
 
-  const [invoices, payments] = await withLoading(() =>
-    Promise.all([window.api.invoices.list(pid), window.api.payments.list({ patient_id: pid })])
-  );
-  const list = $("#billingList");
-  list.innerHTML = "";
-  if (!invoices.length) {
-    list.innerHTML = '<p class="patientSmall">No invoices yet.</p>';
-    return;
-  }
-
-  invoices.forEach((inv) => {
-    const invPayments = payments.filter((p) => Number(p.invoice_id) === Number(inv.id));
-    const paid = invPayments.reduce((s, p) => s + Number(p.amount || 0), 0);
-    const due = Math.max(0, Number(inv.cost || 0) - paid);
-    const card = document.createElement("div");
-    card.className = "invoice-block";
-    const notesHtml = inv.notes
-      ? `<p class="patientSmall invoice-notes-line" style="margin:6px 0 0;line-height:1.4">${escapeHtml(inv.notes)}</p>`
-      : "";
-    card.innerHTML = `
-      <div class="pane-head" style="margin-bottom:8px;"><b>${escapeHtml(inv.procedure || "")}</b>${statusBadge(inv.status)}<span class="patientSmall">${fmtInvoiceDateDDMMM(inv.created_at)}</span></div>${notesHtml}
-      <div style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:8px;font-size:0.875rem;">
-        <span>Total: ${Number(inv.cost || 0).toLocaleString()}</span><span>Lab: ${Number(inv.lab_cost || 0).toLocaleString()}</span>
-        <span>Paid: ${paid.toLocaleString()}</span><span>Due: ${due.toLocaleString()}</span>
-      </div>
-      <div style="display:flex;gap:8px;margin-bottom:8px;">
-        <button type="button" class="btn btn-primary btn-small addPay">+ Payment</button>
-        <button type="button" class="btn btn-secondary btn-small editInv">Edit</button>
-        <button type="button" class="btn btn-danger btn-small delInv">Delete</button>
-      </div>
-      <div class="table-scroll">
-        <table class="billing-table"><thead><tr><th>Date</th><th>Amount</th><th>Mode</th><th></th></tr></thead><tbody></tbody></table>
-      </div>`;
-    const tb = card.querySelector("tbody");
-    invPayments
-      .sort((a, b) => String(a.date).localeCompare(String(b.date)))
-      .forEach((p) => {
-        const tr = document.createElement("tr");
-        tr.innerHTML = `<td>${p.date}</td><td>${Number(p.amount).toLocaleString()}</td><td>${p.payment_mode || ""}</td><td><button type="button" class="btn btn-danger btn-small">×</button></td>`;
-        tr.querySelector("button").onclick = async () => {
-          await window.api.payments.delete(p.id, inv.id);
-          showToast("Payment deleted");
-          renderPatientBilling();
-        };
-        tb.appendChild(tr);
-      });
-    card.querySelector(".addPay").onclick = () => openPaymentModal(inv, pid, renderPatientBilling);
-    card.querySelector(".editInv").onclick = () => openEditInvoiceModal(inv, renderPatientBilling);
-    card.querySelector(".delInv").onclick = async () => {
-      if (!confirm("Delete this invoice and all its payments?")) return;
-      for (const p of invPayments) await window.api.payments.delete(p.id, inv.id);
-      await window.api.invoices.delete(inv.id);
-      showToast("Invoice deleted");
-      renderPatientBilling();
-    };
-    list.appendChild(card);
+  await withLoading(async () => {
+    const [inv, pay] = await Promise.all([
+      window.api.invoices.list(pid),
+      window.api.payments.list({ patient_id: pid })
+    ]);
+    billingDataCache = { pid, invoices: inv || [], payments: pay || [] };
   });
+  paintBillingInvoiceCards();
 }
 
 /** Map MR / Case No / internal id strings to patient display name for clinic billing rows. */
@@ -525,7 +653,7 @@ async function renderClinicBilling() {
       const pidStr = String(inv.patient_id ?? "").trim();
       return {
         sortTs: inv.created_at ? Number(inv.created_at) : 0,
-        dateLabel: fmtInvoiceDateDDMMM(inv.created_at),
+        dateLabel: displayDateTs(inv.created_at),
         mr: pidStr,
         name: pMap.get(pidStr) || "—",
         procedure: inv.procedure || "",
@@ -604,35 +732,85 @@ async function drawCalendar() {
   }
 }
 
-function openPaymentModal(inv, patient_id, onSave) {
+function openPaymentModal(inv, patient_id) {
+  const totalCost = Number(inv.cost || 0);
+  const linked = billingDataCache.payments.filter((p) => String(p.invoice_id) === String(inv.id));
+  const paidPrior = linked.reduce((s, p) => s + Number(p.amount || 0), 0);
+  const outstanding = Math.max(0, totalCost - paidPrior);
+
   const ov = document.createElement("div");
   ov.className = "modal";
-  ov.innerHTML = `<div class="modal-content">
-    <h3>Record Payment</h3>
-    <label>Payment Date</label><input id="pDate" type="date" value="${localYMD(new Date())}">
-    <label>Amount</label><input id="pAmount" type="number" min="1">
-    <label>Mode</label><select id="pMode"><option>Cash</option><option>Bank Transfer</option></select>
-    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px;">
-      <button type="button" id="pCancel" class="btn btn-secondary">Cancel</button>
+  ov.innerHTML = `<div class="modal-content modal-content--payment-record" role="dialog" aria-labelledby="payModalTitle">
+    <h2 id="payModalTitle" class="payment-modal-title">Record Payment</h2>
+    <p class="payment-modal-sub"><span style="display:block">${escapeHtml(inv.procedure || "—")}</span><span>${pkMoney(totalCost)} invoice total</span></p>
+    <div class="payment-form-stack">
+      <div>
+        <label for="pDate">Payment Date</label>
+        <input id="pDate" type="date" value="${localYMD(new Date())}">
+      </div>
+      <div>
+        <label for="pAmount">Amount in PKR</label>
+        <input id="pAmount" type="number" step="any" min="1" placeholder="0">
+      </div>
+      <p class="payment-remaining-hint" id="pRemainingHint">Remaining: ${pkMoney(outstanding)}</p>
+      <div>
+        <label for="pMode">Mode of Payment</label>
+        <select id="pMode"><option>Cash</option><option>Bank Transfer</option><option>Card</option></select>
+      </div>
+    </div>
+    <div class="payment-actions-stack">
       <button type="button" id="pSave" class="btn btn-primary">Save Payment</button>
+      <button type="button" id="pCancel" class="btn btn-secondary">Cancel</button>
     </div>
   </div>`;
   document.body.appendChild(ov);
+  const amtInput = ov.querySelector("#pAmount");
+  const hintEl = ov.querySelector("#pRemainingHint");
+
+  amtInput?.addEventListener("input", () => {
+    const entered = Number(amtInput.value || 0);
+    const projected = outstanding - entered;
+    if (!hintEl) return;
+    hintEl.textContent =
+      projected >= 0
+        ? `Remaining: ${pkMoney(projected)}`
+        : `Over outstanding by ${pkMoney(Math.abs(projected))}`;
+  });
+
   ov.querySelector("#pCancel").onclick = () => ov.remove();
   ov.querySelector("#pSave").onclick = async () => {
     const date = ov.querySelector("#pDate").value;
     const amount = Number(ov.querySelector("#pAmount").value || 0);
+    const payment_mode = ov.querySelector("#pMode").value;
     if (!date || !amount) return showToast("Date and amount required", "error");
-    await window.api.payments.add({
+
+    const rollback = billingDataCache.payments.map((p) => ({ ...p }));
+    const optPid = `opt-pay-${Date.now()}`;
+    const optimisticPay = {
+      __optimistic: true,
+      id: optPid,
       invoice_id: inv.id,
       patient_id,
       date,
       amount,
-      payment_mode: ov.querySelector("#pMode").value
-    });
-    showToast("Payment saved");
+      payment_mode
+    };
+
+    billingDataCache.payments = [...billingDataCache.payments, optimisticPay];
+    paintBillingInvoiceCards();
     ov.remove();
-    onSave?.();
+    showSavingPeek();
+    try {
+      await window.api.payments.add({ invoice_id: inv.id, patient_id, date, amount, payment_mode });
+      await reloadPatientBillingQuiet();
+      showToast("Payment saved");
+    } catch (e) {
+      billingDataCache.payments = rollback.map((x) => ({ ...x }));
+      paintBillingInvoiceCards();
+      showToast(e.message || "Could not save payment", "error");
+    } finally {
+      hideSavingPeek();
+    }
   };
 }
 
@@ -670,7 +848,7 @@ function openEditInvoiceModal(inv, onSave) {
     const notes = (ov.querySelector("#eNotes").value || "").trim();
     await window.api.invoices.update({
       id: inv.id,
-      created_at: new Date(`${ov.querySelector("#eDate").value}T00:00:00`).getTime(),
+      created_at: new Date(`${ov.querySelector("#eDate").value}T12:00:00`).getTime(),
       procedure,
       cost: Number(ov.querySelector("#eCost").value || 0),
       lab_cost: Number(ov.querySelector("#eLab").value || 0),
@@ -682,6 +860,67 @@ function openEditInvoiceModal(inv, onSave) {
   };
 }
 
+async function openAddAppointmentModal() {
+  const plist = await withLoading(() => window.api.patients.list());
+  if (!plist || !plist.length) {
+    showToast("Add at least one patient before scheduling appointments.", "error");
+    return;
+  }
+  const dv = document.createElement("div");
+  dv.className = "modal modal--appt";
+  const hh = String(new Date().getHours()).padStart(2, "0");
+  const mm = String(new Date().getMinutes()).padStart(2, "0");
+  dv.innerHTML = `<div class="modal-content modal-content--appt">
+    <h2 class="modal-card-title">Add Appointment</h2>
+    <div class="modal-form-stack">
+      <label for="amPatient">Patient</label>
+      <select id="amPatient"></select>
+      <label for="amDoctor">Doctor</label>
+      <input id="amDoctor" type="text" placeholder="Doctor name">
+      <label for="amProcedure">Procedure</label>
+      <input id="amProcedure" type="text" placeholder="Procedure">
+      <label for="amDate">Date</label>
+      <input id="amDate" type="date" value="${localYMD(new Date())}">
+      <label for="amTime">Time</label>
+      <input id="amTime" type="time" value="${hh}:${mm}">
+    </div>
+    <div class="modal-actions-row">
+      <button type="button" id="amSave" class="btn btn-primary">Save</button>
+      <button type="button" id="amCancel" class="btn btn-secondary">Cancel</button>
+    </div>
+  </div>`;
+  document.body.appendChild(dv);
+  const psel = dv.querySelector("#amPatient");
+  (plist || []).forEach((p) => {
+    const idPart = String(p.id ?? p.external_id ?? "").trim();
+    if (!idPart) return;
+    const o = document.createElement("option");
+    o.value = idPart;
+    o.dataset.name = p.name || p["Patient Name"] || "";
+    const mr = String(p.external_id ?? p["Case No."] ?? "").trim();
+    const nm = (p.name || p["Patient Name"] || "").trim();
+    o.textContent = mr ? `${mr} — ${nm || mr}` : nm || idPart;
+    psel.appendChild(o);
+  });
+  dv.querySelector("#amCancel").onclick = () => dv.remove();
+  dv.querySelector("#amSave").onclick = async () => {
+    const amSel = dv.querySelector("#amPatient");
+    if (!amSel?.value) return showToast("Select patient", "error");
+    await window.api.appts.add({
+      doctor: (dv.querySelector("#amDoctor").value || "").trim(),
+      patient_id: amSel.value,
+      patient_name: amSel.options[amSel.selectedIndex]?.dataset?.name || "",
+      procedure: (dv.querySelector("#amProcedure").value || "").trim(),
+      date: dv.querySelector("#amDate").value,
+      time: dv.querySelector("#amTime").value,
+      status: "yellow"
+    });
+    showToast("Appointment added");
+    dv.remove();
+    drawCalendar();
+  };
+}
+
 function openApptModal(a) {
   const ov = document.createElement("div");
   ov.className = "modal";
@@ -689,7 +928,7 @@ function openApptModal(a) {
     <h3>Appointment</h3>
     <p><b>Case:</b> ${a.patient_id || "—"}</p>
     <p><b>Name:</b> ${a.patient_name || "—"}</p>
-    <p><b>Date:</b> ${new Date(a.date).toLocaleDateString()}</p>
+    <p><b>Date:</b> ${displayDateYYYYMMDD(a.date)}</p>
     <p><b>Time:</b> ${fmt12(a.time || "")}</p>
     <label>Status Color</label>
     <select id="statusSel" style="width:100%;min-height:44px;">
@@ -722,39 +961,29 @@ function openApptModal(a) {
   };
 }
 
-async function openDrawer(type, patient = null) {
-  $("#drawerTitle").textContent = type === "patient" ? (patient ? "Edit Patient" : "New Patient") : "New Appointment";
+function openDrawer(type, patient = null) {
+  if (type !== "patient") return;
+  $("#drawerTitle").textContent = patient ? "Edit Patient" : "New Patient";
   const dr = $("#drawer");
   const c = $("#drawerContent");
   c.innerHTML = "";
-  if (type === "patient") {
-    dr.dataset.editId = patient?.id || "";
-    c.innerHTML = `
-      <label>Case No</label><input id="pCaseNo" placeholder="Leave blank for auto">
-      <label>Name</label><input id="pName">
-      <label>Age</label><input id="pAge">
-      <label>Gender</label><input id="pGender">
-      <label>Phone</label><input id="pPhone">
-      <label>Address</label><input id="pAddress">`;
-    if (patient) {
-      $("#pCaseNo").value = patient.external_id || "";
-      $("#pName").value = patient.name || "";
-      $("#pAge").value = patient.age || "";
-      $("#pGender").value = patient.gender || "";
-      $("#pPhone").value = patient.phone || "";
-      $("#pAddress").value = patient.address || "";
-    }
-  } else {
-    const plist = await withLoading(() => window.api.patients.list(""));
-    c.innerHTML = `
-      <label>Patient</label>
-      <select id="aPatientSelect">${plist.map((p) => `<option value="${p.id || p.external_id}" data-name="${(p.name || "").replace(/"/g, "&quot;")}">${p.external_id || ""} — ${p.name || ""}</option>`).join("")}</select>
-      <label>Doctor</label><input id="aDoctor">
-      <label>Procedure</label><input id="aProcedure">
-      <label>Date</label><input id="aDate" type="date" value="${localYMD(new Date())}">
-      <label>Time</label><input id="aTime" type="time" value="${String(new Date().getHours()).padStart(2, "0")}:${String(new Date().getMinutes()).padStart(2, "0")}">`;
+  dr.dataset.editId = patient?.id || "";
+  c.innerHTML = `
+    <label>Case No</label><input id="pCaseNo" placeholder="Leave blank for auto">
+    <label>Name</label><input id="pName">
+    <label>Age</label><input id="pAge">
+    <label>Gender</label><input id="pGender">
+    <label>Phone</label><input id="pPhone">
+    <label>Address</label><input id="pAddress">`;
+  if (patient) {
+    $("#pCaseNo").value = patient.external_id || "";
+    $("#pName").value = patient.name || "";
+    $("#pAge").value = patient.age || "";
+    $("#pGender").value = patient.gender || "";
+    $("#pPhone").value = patient.phone || "";
+    $("#pAddress").value = patient.address || "";
   }
-  dr.dataset.type = type;
+  dr.dataset.type = "patient";
   dr.classList.remove("hidden");
   dr.setAttribute("aria-hidden", "false");
 }
@@ -766,39 +995,22 @@ function closeDrawer() {
 }
 
 async function saveDrawer() {
-  const type = $("#drawer").dataset.type;
-  if (type === "patient") {
-    const p = {
-      id: $("#drawer").dataset.editId || undefined,
-      external_id: ($("#pCaseNo").value || "").trim() || undefined,
-      name: $("#pName").value || "",
-      age: $("#pAge").value || "",
-      gender: $("#pGender").value || "",
-      phone: $("#pPhone").value || "",
-      address: $("#pAddress").value || ""
-    };
-    if (!p.name.trim()) return showToast("Name is required", "error");
-    await window.api.patients.save(p);
-    showToast("Patient saved");
-    closeDrawer();
-    await refreshPatientsCache();
-    renderPatientList();
-  } else {
-    const sel = $("#aPatientSelect");
-    if (!sel?.value) return showToast("Select patient", "error");
-    await window.api.appts.add({
-      doctor: $("#aDoctor").value || "",
-      patient_id: sel.value,
-      patient_name: sel.options[sel.selectedIndex]?.dataset?.name || "",
-      procedure: $("#aProcedure").value || "",
-      date: $("#aDate").value,
-      time: $("#aTime").value,
-      status: "yellow"
-    });
-    showToast("Appointment added");
-    closeDrawer();
-    drawCalendar();
-  }
+  if ($("#drawer").dataset.type !== "patient") return;
+  const p = {
+    id: $("#drawer").dataset.editId || undefined,
+    external_id: ($("#pCaseNo").value || "").trim() || undefined,
+    name: $("#pName").value || "",
+    age: $("#pAge").value || "",
+    gender: $("#pGender").value || "",
+    phone: $("#pPhone").value || "",
+    address: $("#pAddress").value || ""
+  };
+  if (!p.name.trim()) return showToast("Name is required", "error");
+  await window.api.patients.save(p);
+  showToast("Patient saved");
+  closeDrawer();
+  await refreshPatientsCache();
+  renderPatientList();
 }
 
 window.addEventListener("DOMContentLoaded", async () => {
@@ -818,7 +1030,7 @@ window.addEventListener("DOMContentLoaded", async () => {
     drawCalendar();
   };
   $("#newPatient").onclick = () => openDrawer("patient");
-  $("#addAppt").onclick = () => openDrawer("appt");
+  $("#addAppt").onclick = () => openAddAppointmentModal();
   $("#drawerClose").onclick = closeDrawer;
   $("#drawerSave").onclick = saveDrawer;
   $("#search").addEventListener("input", () => renderPatientList());

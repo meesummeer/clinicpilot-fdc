@@ -843,6 +843,144 @@ body {
   box-shadow: 0 20px 48px rgba(0, 0, 0, 0.15);
 }
 
+.modal.modal--appt {
+  background: rgba(15, 23, 42, 0.55);
+}
+
+.modal-content--appt {
+  width: min(480px, 100%);
+  border-radius: 12px;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.18);
+}
+
+.modal-content--appt h2.modal-card-title {
+  margin: 0 0 4px;
+  font-size: 1.125rem;
+  font-weight: 700;
+}
+
+.modal-content--appt .modal-form-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.modal-content--appt .modal-form-stack label {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.modal-content--appt .modal-form-stack input,
+.modal-content--appt .modal-form-stack select {
+  width: 100%;
+  min-height: 44px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font: inherit;
+  box-sizing: border-box;
+}
+
+.modal-content--appt .modal-actions-row {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 22px;
+}
+
+.modal-content--appt .modal-actions-row .btn {
+  width: 100%;
+  justify-content: center;
+}
+
+.modal-content--payment-record {
+  width: 440px;
+  max-width: 100%;
+  border-radius: 12px;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.18);
+  padding: 22px;
+}
+
+.modal-content--payment-record .payment-modal-title {
+  margin: 0;
+  font-size: 1.125rem;
+  font-weight: 700;
+}
+
+.modal-content--payment-record .payment-modal-sub {
+  margin: 6px 0 16px;
+  font-size: 0.875rem;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+.modal-content--payment-record .payment-form-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.modal-content--payment-record .payment-form-stack label {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.modal-content--payment-record .payment-form-stack input,
+.modal-content--payment-record .payment-form-stack select {
+  width: 100%;
+  min-height: 46px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font: inherit;
+  box-sizing: border-box;
+}
+
+.modal-content--payment-record .payment-remaining-hint {
+  margin: -6px 0 0;
+  font-size: 0.8125rem;
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.modal-content--payment-record .payment-actions-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 22px;
+}
+
+.modal-content--payment-record .payment-actions-stack .btn {
+  width: 100%;
+  justify-content: center;
+}
+
+.saving-peek {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 450;
+  padding: 10px 16px;
+  border-radius: 999px;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--muted);
+  background: var(--card);
+  border: 1px solid var(--border);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.08);
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.2s ease;
+}
+
+.saving-peek.visible {
+  opacity: 1;
+  visibility: visible;
+}
+
 /* ----- Loading ----- */
 .loading-overlay {
   position: fixed;
