@@ -1123,3 +1123,136 @@ body {
   .status-partial { background: #ffedd5 !important; color: #78350f !important; }
   .status-unpaid { background: #fee2e2 !important; color: #991b1b !important; }
 }
+
+/* ----- Patient billing: customer invoice print (Patient tab) ----- */
+.invoice-print-sheet {
+  box-sizing: border-box;
+}
+
+/* Hidden on screen until print (app injects briefly) */
+#invoice-print-area.invoice-print-sheet {
+  position: fixed;
+  left: -10000px;
+  top: 0;
+  width: 720px;
+  max-width: 100%;
+  padding: 24px;
+  background: #fff;
+  color: #111;
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.invoice-print-clinic-title {
+  margin: 0 0 8px;
+  font-size: 1.65rem;
+  font-weight: 800;
+  text-align: center;
+  color: #111;
+}
+
+.invoice-print-subtitle {
+  margin: 0 0 16px;
+  font-size: 0.95rem;
+  text-align: center;
+  color: #6b7280;
+  font-weight: 600;
+}
+
+.invoice-print-rule {
+  border: none;
+  border-top: 1px solid #111;
+  margin: 0 0 16px;
+}
+
+.invoice-print-meta {
+  margin-bottom: 20px;
+  color: #111;
+}
+
+.invoice-print-meta p {
+  margin: 6px 0;
+}
+
+.invoice-print-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 28px;
+  color: #111;
+}
+
+.invoice-print-table th,
+.invoice-print-table td {
+  border: 1px solid #ccc;
+  padding: 10px 12px;
+  text-align: left;
+}
+
+.invoice-print-table th {
+  background: #f8fafc;
+  font-weight: 700;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: #374151;
+}
+
+.invoice-print-due-heading,
+.invoice-print-due-cell {
+  color: var(--danger) !important;
+  font-weight: 700;
+}
+
+.invoice-print-footer {
+  margin-top: 24px;
+  text-align: center;
+  font-size: 0.95rem;
+  color: #374151;
+  font-weight: 500;
+}
+
+@media print {
+  html:has(body.cp-invoice-printing),
+  body.cp-invoice-printing {
+    height: auto !important;
+    overflow: visible !important;
+    background: #fff !important;
+  }
+
+  body.cp-invoice-printing > *:not(#invoice-print-area) {
+    display: none !important;
+  }
+
+  body.cp-invoice-printing #invoice-print-area {
+    display: block !important;
+    position: static !important;
+    left: auto !important;
+    top: auto !important;
+    width: 100% !important;
+    max-width: none !important;
+    padding: 20px !important;
+    margin: 0 !important;
+    background: #fff !important;
+    color: #000 !important;
+    box-shadow: none !important;
+  }
+
+  body.cp-invoice-printing #invoice-print-area * {
+    color: #000 !important;
+  }
+
+  body.cp-invoice-printing #invoice-print-area .invoice-print-subtitle {
+    color: #555 !important;
+  }
+
+  body.cp-invoice-printing #invoice-print-area .invoice-print-due-heading,
+  body.cp-invoice-printing #invoice-print-area .invoice-print-due-cell {
+    color: #b91c1c !important;
+  }
+
+  body.cp-invoice-printing #invoice-print-area .invoice-print-table th {
+    background: #f3f4f6 !important;
+    color: #111 !important;
+  }
+}

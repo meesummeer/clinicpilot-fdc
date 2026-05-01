@@ -40,6 +40,112 @@ function pkMoney(n) {
   return `PKR ${Number(n || 0).toLocaleString()}`;
 }
 
+function patientDisplayName(p) {
+  return (p?.name || p?.["Patient Name"] || "").trim() || "—";
+}
+
+/** Digits-only PK mobile for wa.me — strip leading 0, ensure country prefix 92. */
+function phoneDigitsForPakistanWa(raw) {
+  let d = String(raw || "").replace(/\D/g, "");
+  if (!d) return "";
+  if (d.startsWith("92")) return d;
+  d = d.replace(/^0+/, "");
+  if (!d.startsWith("92")) d = `92${d}`;
+  return d;
+}
+
+function buildInvoiceCustomerWhatsAppText(patientName, inv, paid, due) {
+  const proc = String(inv?.procedure ?? "").trim() || "—";
+  const total = Number(inv?.cost ?? 0);
+  const paidN = Number(paid || 0);
+  const dueN = Math.max(0, Number(due ?? 0));
+  return (
+    `Dear ${patientName}, your invoice from Faseeh Dental Clinic:\n\n` +
+    `Procedure: ${proc}\n` +
+    `Total: PKR ${total.toLocaleString()}\n` +
+    `Paid: PKR ${paidN.toLocaleString()}\n` +
+    `Due: PKR ${dueN.toLocaleString()}\n\n` +
+    `Thank you for choosing us.`
+  );
+}
+
+function openBillingInvoiceWhatsApp(inv, paid, due) {
+  const pt = currentPatient || {};
+  const name = patientDisplayName(pt);
+  const rawPhone = pt.phone ?? pt.Contact ?? "";
+  const waDigits = phoneDigitsForPakistanWa(rawPhone);
+  if (!waDigits) {
+    showToast("No phone number on file for this patient", "error");
+    return;
+  }
+  const text = buildInvoiceCustomerWhatsAppText(name, inv, paid, due);
+  const url = `https://wa.me/${waDigits}?text=${encodeURIComponent(text)}`;
+  window.open(url, "_blank", "noopener,noreferrer");
+}
+
+function printCustomerInvoiceCopy(inv, paid, due) {
+  const pt = currentPatient || {};
+  const pname = escapeHtml(patientDisplayName(pt));
+  const mr = escapeHtml(String(pt.external_id ?? pt["Case No."] ?? pt.id ?? "").trim() || "—");
+  const dateStr = escapeHtml(displayDateTs(inv.created_at));
+  const procedure = escapeHtml(String(inv.procedure ?? "").trim() || "—");
+  const totalCost = Number(inv.cost || 0);
+  const dueN = Math.max(0, Number(due || 0));
+
+  let dueColHtml = "";
+  let dueCellsHtml = "";
+  if (dueN > 1e-9) {
+    dueColHtml = '<th scope="col" class="invoice-print-due-heading">Balance Due (PKR)</th>';
+    dueCellsHtml = `<td class="invoice-print-due-cell">${escapeHtml(pkMoney(dueN))}</td>`;
+  }
+
+  const wrap = document.createElement("div");
+  wrap.id = "invoice-print-area";
+  wrap.className = "invoice-print-sheet";
+  wrap.innerHTML = `
+    <header class="invoice-print-clinic-title">Faseeh Dental Clinic</header>
+    <p class="invoice-print-subtitle">Patient Invoice</p>
+    <hr class="invoice-print-rule" />
+    <div class="invoice-print-meta">
+      <p><strong>Name:</strong> ${pname}</p>
+      <p><strong>MR Number:</strong> ${mr}</p>
+    </div>
+    <table class="invoice-print-table">
+      <thead>
+        <tr>
+          <th scope="col">Date</th>
+          <th scope="col">Procedure</th>
+          <th scope="col">Total Cost (PKR)</th>
+          ${dueColHtml}
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>${dateStr}</td>
+          <td>${procedure}</td>
+          <td>${escapeHtml(pkMoney(totalCost))}</td>
+          ${dueCellsHtml}
+        </tr>
+      </tbody>
+    </table>
+    <footer class="invoice-print-footer">Thank you for choosing Faseeh Dental Clinic</footer>`;
+
+  document.body.classList.add("cp-invoice-printing");
+  document.body.appendChild(wrap);
+
+  let cleaned = false;
+  const cleanup = () => {
+    if (cleaned) return;
+    cleaned = true;
+    document.body.classList.remove("cp-invoice-printing");
+    wrap.remove();
+    window.removeEventListener("afterprint", cleanup);
+  };
+  window.addEventListener("afterprint", cleanup);
+  window.print();
+  setTimeout(cleanup, 2000);
+}
+
 function ensureSavingPeekEl() {
   let el = document.getElementById("savingPeek");
   if (!el) {
@@ -451,10 +557,14 @@ function paintBillingInvoiceCards() {
       ? `<p class="patientSmall invoice-notes-line" style="margin:6px 0 0;line-height:1.4">${escapeHtml(inv.notes)}</p>`
       : "";
     const actionsHtml = synced
-      ? `<div style="display:flex;gap:8px;margin-bottom:8px;">
+      ? `<div style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap;">
         <button type="button" class="btn btn-primary btn-small addPay">+ Payment</button>
         <button type="button" class="btn btn-secondary btn-small editInv">Edit</button>
         <button type="button" class="btn btn-danger btn-small delInv">Delete</button>
+      </div>
+      <div class="billing-copy-row" style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap;">
+        <button type="button" class="btn btn-secondary btn-small billing-gen-copy">Generate Customer Copy</button>
+        <button type="button" class="btn btn-secondary btn-small billing-wa-share">WhatsApp</button>
       </div>`
       : `<p class="patientSmall" style="margin-bottom:8px;">Saving invoice…</p>`;
     card.innerHTML = `
@@ -498,6 +608,10 @@ function paintBillingInvoiceCards() {
         await renderPatientBilling();
       };
     }
+    const genCopyBtn = card.querySelector(".billing-gen-copy");
+    if (genCopyBtn && synced) genCopyBtn.onclick = () => printCustomerInvoiceCopy(inv, paid, due);
+    const waBtn = card.querySelector(".billing-wa-share");
+    if (waBtn && synced) waBtn.onclick = () => openBillingInvoiceWhatsApp(inv, paid, due);
     list.appendChild(card);
   });
 }
