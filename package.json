@@ -3,9 +3,6 @@
   "version": "1.0.0",
   "description": "ClinicPilot - Faseeh Dental Clinic web app",
   "private": true,
-  "dependencies": {
-    "googleapis": "^144.0.0"
-  },
   "engines": {
     "node": ">=18"
   }
