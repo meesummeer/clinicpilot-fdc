@@ -1,6 +1,9 @@
 import "./firebase.js";
 import { Timestamp } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-firestore.js";
 
+if (!localStorage.getItem("cp_token")) {
+  window.location.href = "/login.html";
+} else {
 const db = window.db;
 const {
   collection,
@@ -463,3 +466,4 @@ window.api = {
 };
 
 document.body.style.display = "block";
+}

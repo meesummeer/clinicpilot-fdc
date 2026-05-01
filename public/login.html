@@ -93,35 +93,24 @@
     const loginBtn = document.getElementById('loginBtn');
     const errMsg = document.getElementById('errMsg');
 
-    async function doLogin() {
+    function doLogin() {
       const password = pwInput.value;
       if (!password) return;
       loginBtn.disabled = true;
       loginBtn.textContent = 'Signing in...';
       errMsg.textContent = '';
 
-      try {
-        const res = await fetch('/api/auth-login', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ password })
-        });
-        const data = await res.json();
-        if (data.ok && data.token) {
-          localStorage.setItem('cp_token', data.token);
-          window.location.href = '/';
-        } else {
-          errMsg.textContent = 'Incorrect password. Try again.';
-          loginBtn.disabled = false;
-          loginBtn.textContent = 'Sign In';
-          pwInput.value = '';
-          pwInput.focus();
-        }
-      } catch (e) {
-        errMsg.textContent = 'Connection error. Try again.';
-        loginBtn.disabled = false;
-        loginBtn.textContent = 'Sign In';
+      if (password === 'FDC@2026') {
+        localStorage.setItem('cp_token', 'fdc-local-auth');
+        window.location.href = '/';
+        return;
       }
+
+      errMsg.textContent = 'Incorrect password.';
+      loginBtn.disabled = false;
+      loginBtn.textContent = 'Sign In';
+      pwInput.value = '';
+      pwInput.focus();
     }
 
     loginBtn.onclick = doLogin;

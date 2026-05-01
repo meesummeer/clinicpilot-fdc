@@ -921,6 +921,55 @@ async function openAddAppointmentModal() {
   };
 }
 
+function openNewPatientModal() {
+  const dv = document.createElement("div");
+  dv.className = "modal modal--appt";
+  dv.innerHTML = `<div class="modal-content modal-content--appt">
+    <h2 class="modal-card-title">New Patient</h2>
+    <div class="modal-form-stack">
+      <label for="npCaseNo">Case No</label>
+      <input id="npCaseNo" type="text" placeholder="Leave blank for auto">
+      <label for="npName">Name</label>
+      <input id="npName" type="text" placeholder="Full name">
+      <label for="npAge">Age</label>
+      <input id="npAge" type="text" placeholder="Age">
+      <label for="npGender">Gender</label>
+      <select id="npGender">
+        <option value="">Select…</option>
+        <option value="Male">Male</option>
+        <option value="Female">Female</option>
+        <option value="Other">Other</option>
+      </select>
+      <label for="npPhone">Phone</label>
+      <input id="npPhone" type="text" placeholder="Phone">
+      <label for="npAddress">Address</label>
+      <input id="npAddress" type="text" placeholder="Address">
+    </div>
+    <div class="modal-actions-row">
+      <button type="button" id="npSave" class="btn btn-primary">Save</button>
+      <button type="button" id="npCancel" class="btn btn-secondary">Cancel</button>
+    </div>
+  </div>`;
+  document.body.appendChild(dv);
+  dv.querySelector("#npCancel").onclick = () => dv.remove();
+  dv.querySelector("#npSave").onclick = async () => {
+    const p = {
+      external_id: (dv.querySelector("#npCaseNo").value || "").trim() || undefined,
+      name: dv.querySelector("#npName").value || "",
+      age: dv.querySelector("#npAge").value || "",
+      gender: dv.querySelector("#npGender").value || "",
+      phone: dv.querySelector("#npPhone").value || "",
+      address: dv.querySelector("#npAddress").value || ""
+    };
+    if (!p.name.trim()) return showToast("Name is required", "error");
+    await window.api.patients.save(p);
+    showToast("Patient saved");
+    dv.remove();
+    await refreshPatientsCache();
+    renderPatientList();
+  };
+}
+
 function openApptModal(a) {
   const ov = document.createElement("div");
   ov.className = "modal";
@@ -1014,6 +1063,8 @@ async function saveDrawer() {
 }
 
 window.addEventListener("DOMContentLoaded", async () => {
+  if (!localStorage.getItem("cp_token")) return;
+
   mountSettingsSection();
   applyTheme(localStorage.getItem("cp_theme") || "cyan");
   const m = new Date();
@@ -1029,7 +1080,7 @@ window.addEventListener("DOMContentLoaded", async () => {
     currentMonth.setMonth(currentMonth.getMonth() + 1);
     drawCalendar();
   };
-  $("#newPatient").onclick = () => openDrawer("patient");
+  $("#newPatient").onclick = () => openNewPatientModal();
   $("#addAppt").onclick = () => openAddAppointmentModal();
   $("#drawerClose").onclick = closeDrawer;
   $("#drawerSave").onclick = saveDrawer;
