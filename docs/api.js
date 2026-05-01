@@ -2,7 +2,7 @@ import "./firebase.js";
 import { Timestamp } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-firestore.js";
 
 if (!localStorage.getItem("cp_token")) {
-  window.location.href = "/login.html";
+  window.location.href = "/clinicpilot-fdc/login.html";
 } else {
 const db = window.db;
 const {
@@ -460,7 +460,7 @@ window.api = {
   auth: {
     logout: () => {
       localStorage.removeItem("cp_token");
-      window.location.href = "/login.html";
+      window.location.href = "/clinicpilot-fdc/login.html";
     }
   }
 };
