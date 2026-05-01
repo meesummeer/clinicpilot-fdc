@@ -1,9 +1,14 @@
+const BASE = "/clinicpilot-fdc";
 import "./firebase.js";
 import { Timestamp } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-firestore.js";
 
-if (!localStorage.getItem("cp_token")) {
-  window.location.href = "/clinicpilot-fdc/login.html";
-} else {
+(function checkAuth() {
+  const token = localStorage.getItem("cp_token");
+  if (!token) {
+    window.location.href = BASE + "/login.html";
+  }
+})();
+
 const db = window.db;
 const {
   collection,
@@ -460,10 +465,9 @@ window.api = {
   auth: {
     logout: () => {
       localStorage.removeItem("cp_token");
-      window.location.href = "/clinicpilot-fdc/login.html";
+      window.location.href = BASE + "/login.html";
     }
   }
 };
 
 document.body.style.display = "block";
-}
