@@ -1072,6 +1072,14 @@ window.addEventListener("DOMContentLoaded", async () => {
 
   $$(".nav-btn[data-nav]").forEach((el) => (el.onclick = () => setActiveNav(el.dataset.nav)));
 
+  const signOutBtn = document.querySelector(".sign-out-btn");
+  if (signOutBtn) {
+    signOutBtn.onclick = () => {
+      localStorage.removeItem("cp_token");
+      window.location.href = "https://meesummeer.github.io/clinicpilot-fdc/login.html";
+    };
+  }
+
   $("#prevMonth").onclick = () => {
     currentMonth.setMonth(currentMonth.getMonth() - 1);
     drawCalendar();
