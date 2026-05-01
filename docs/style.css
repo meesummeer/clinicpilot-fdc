@@ -1124,92 +1124,224 @@ body {
   .status-unpaid { background: #fee2e2 !important; color: #991b1b !important; }
 }
 
-/* ----- Patient billing: customer invoice print (Patient tab) ----- */
+/* ----- Patient billing: customer invoice copy modal + PDF print ----- */
+.invoice-copy-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10050;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px 16px;
+  background: rgba(0, 0, 0, 0.72);
+  box-sizing: border-box;
+}
+
+.invoice-copy-modal {
+  position: relative;
+  width: 100%;
+  max-width: 520px;
+  max-height: min(92vh, 900px);
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 20px;
+  margin: auto;
+  background: transparent;
+}
+
+.invoice-copy-x {
+  position: absolute;
+  top: -4px;
+  right: 4px;
+  z-index: 2;
+  width: 44px;
+  height: 44px;
+  border: none;
+  background: transparent;
+  font-size: 1.85rem;
+  line-height: 1;
+  color: #f3f4f6;
+  cursor: pointer;
+  border-radius: 8px;
+}
+
+.invoice-copy-x:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.invoice-copy-modal-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+}
+
+.invoice-copy-preview-shell {
+  box-sizing: border-box;
+  background: #fff;
+  color: #111;
+  padding: 28px 24px;
+  border-radius: 12px;
+  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.18);
+}
+
+.invoice-copy-brand {
+  margin: 0 0 6px;
+  text-align: center;
+  font-size: 1.55rem;
+  font-weight: 800;
+  color: var(--accent, #009688);
+}
+
+.invoice-copy-sheet-title {
+  margin: 0 0 16px;
+  text-align: center;
+  font-size: 0.95rem;
+  color: #6b7280;
+  font-weight: 600;
+}
+
+.invoice-copy-rule {
+  border: none;
+  border-top: 1px solid #e5e7eb;
+  margin: 0 0 14px;
+}
+
+.invoice-copy-kv-grid {
+  display: grid;
+  grid-template-columns: minmax(120px, 38%) 1fr;
+  gap: 10px 12px;
+  align-items: baseline;
+}
+
+.invoice-copy-kv-row {
+  display: contents;
+}
+
+.invoice-copy-label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #64748b;
+}
+
+.invoice-copy-value {
+  font-size: 0.95rem;
+  color: #111;
+  word-break: break-word;
+}
+
+.invoice-copy-kv-due .invoice-copy-value {
+  color: var(--danger, #dc2626);
+  font-weight: 700;
+}
+
+.invoice-copy-foot {
+  margin: 14px 0 0;
+  text-align: center;
+  font-size: 0.8rem;
+  color: #9ca3af;
+}
+
+.invoice-copy-modal-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: center;
+}
+
+.invoice-copy-btn-pdf.btn,
+.invoice-copy-btn-wa.btn {
+  flex: 1 1 160px;
+  min-height: 44px;
+}
+
+.invoice-copy-btn-pdf {
+  background: #1f2937 !important;
+  color: #fff !important;
+  border-color: transparent !important;
+}
+
+.invoice-copy-btn-wa {
+  background: #25d366 !important;
+  color: #fff !important;
+  border-color: transparent !important;
+}
+
+.invoice-copy-btn-wa:hover {
+  filter: brightness(0.95);
+}
+
 .invoice-print-sheet {
   box-sizing: border-box;
 }
 
-/* Hidden on screen until print (app injects briefly) */
 #invoice-print-area.invoice-print-sheet {
   position: fixed;
   left: -10000px;
   top: 0;
-  width: 720px;
+  width: 600px;
   max-width: 100%;
-  padding: 24px;
+  padding: 40px;
   background: #fff;
-  color: #111;
+  color: #000;
   font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
   font-size: 14px;
   line-height: 1.5;
 }
 
-.invoice-print-clinic-title {
+.invoice-print-brand {
   margin: 0 0 8px;
-  font-size: 1.65rem;
-  font-weight: 800;
   text-align: center;
-  color: #111;
+  font-size: 1.75rem;
+  font-weight: 800;
+  color: #000;
 }
 
-.invoice-print-subtitle {
+.invoice-print-sheet-title {
   margin: 0 0 16px;
-  font-size: 0.95rem;
   text-align: center;
-  color: #6b7280;
-  font-weight: 600;
+  font-size: 0.95rem;
+  color: #555;
 }
 
 .invoice-print-rule {
   border: none;
-  border-top: 1px solid #111;
-  margin: 0 0 16px;
+  border-top: 1px solid #333;
+  margin: 0 0 14px;
 }
 
-.invoice-print-meta {
-  margin-bottom: 20px;
-  color: #111;
+.invoice-print-kv-grid {
+  display: grid;
+  grid-template-columns: minmax(120px, 38%) 1fr;
+  gap: 10px 12px;
+  align-items: baseline;
 }
 
-.invoice-print-meta p {
-  margin: 6px 0;
+.invoice-print-kv-row {
+  display: contents;
 }
 
-.invoice-print-table {
-  width: 100%;
-  border-collapse: collapse;
-  margin-bottom: 28px;
-  color: #111;
+.invoice-print-label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #444;
 }
 
-.invoice-print-table th,
-.invoice-print-table td {
-  border: 1px solid #ccc;
-  padding: 10px 12px;
-  text-align: left;
-}
-
-.invoice-print-table th {
-  background: #f8fafc;
-  font-weight: 700;
-  font-size: 0.8rem;
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
-  color: #374151;
-}
-
-.invoice-print-due-heading,
-.invoice-print-due-cell {
-  color: var(--danger) !important;
-  font-weight: 700;
-}
-
-.invoice-print-footer {
-  margin-top: 24px;
-  text-align: center;
+.invoice-print-value {
   font-size: 0.95rem;
-  color: #374151;
-  font-weight: 500;
+}
+
+.invoice-print-kv-due .invoice-print-value {
+  color: var(--danger, #dc2626);
+  font-weight: 700;
+}
+
+.invoice-print-foot {
+  margin: 14px 0 0;
+  text-align: center;
+  font-size: 0.82rem;
+  color: #666;
 }
 
 @media print {
@@ -1218,21 +1350,26 @@ body {
     height: auto !important;
     overflow: visible !important;
     background: #fff !important;
+    margin: 0 !important;
+    padding: 0 !important;
   }
 
+  /* Customer invoice PDF: hide full app chrome; print only injected sheet. */
   body.cp-invoice-printing > *:not(#invoice-print-area) {
     display: none !important;
   }
 
   body.cp-invoice-printing #invoice-print-area {
-    display: block !important;
+    visibility: visible !important;
     position: static !important;
+    display: block !important;
     left: auto !important;
     top: auto !important;
     width: 100% !important;
-    max-width: none !important;
-    padding: 20px !important;
-    margin: 0 !important;
+    max-width: 600px !important;
+    margin: 0 auto !important;
+    padding: 40px !important;
+    box-sizing: border-box !important;
     background: #fff !important;
     color: #000 !important;
     box-shadow: none !important;
@@ -1242,17 +1379,20 @@ body {
     color: #000 !important;
   }
 
-  body.cp-invoice-printing #invoice-print-area .invoice-print-subtitle {
-    color: #555 !important;
+  body.cp-invoice-printing #invoice-print-area .invoice-print-sheet-title,
+  body.cp-invoice-printing #invoice-print-area .invoice-print-label,
+  body.cp-invoice-printing #invoice-print-area .invoice-print-foot {
+    color: #444 !important;
   }
 
-  body.cp-invoice-printing #invoice-print-area .invoice-print-due-heading,
-  body.cp-invoice-printing #invoice-print-area .invoice-print-due-cell {
+  body.cp-invoice-printing #invoice-print-area .invoice-print-brand {
+    color: #000 !important;
+    font-size: 1.85rem !important;
+    font-weight: 800 !important;
+    text-align: center !important;
+  }
+
+  body.cp-invoice-printing #invoice-print-area .invoice-print-kv-due .invoice-print-value {
     color: #b91c1c !important;
-  }
-
-  body.cp-invoice-printing #invoice-print-area .invoice-print-table th {
-    background: #f3f4f6 !important;
-    color: #111 !important;
   }
 }

@@ -44,91 +44,100 @@ function patientDisplayName(p) {
   return (p?.name || p?.["Patient Name"] || "").trim() || "—";
 }
 
-/** Digits-only PK mobile for wa.me — strip leading 0, ensure country prefix 92. */
-function phoneDigitsForPakistanWa(raw) {
+/** wa.me phone: leading 0 → 92 (e.g. 03… → 923…). Keeps leading 92 as-is. */
+function waDigitsFromPakistanPhone(raw) {
   let d = String(raw || "").replace(/\D/g, "");
   if (!d) return "";
   if (d.startsWith("92")) return d;
-  d = d.replace(/^0+/, "");
-  if (!d.startsWith("92")) d = `92${d}`;
-  return d;
+  if (d.startsWith("0")) return `92${d.slice(1)}`;
+  return `92${d}`;
 }
 
-function buildInvoiceCustomerWhatsAppText(patientName, inv, paid, due) {
+function whatsappInvoiceMessage(patientName, inv, paid, due) {
   const proc = String(inv?.procedure ?? "").trim() || "—";
   const total = Number(inv?.cost ?? 0);
   const paidN = Number(paid || 0);
   const dueN = Math.max(0, Number(due ?? 0));
   return (
-    `Dear ${patientName}, your invoice from Faseeh Dental Clinic:\n\n` +
+    `Dear ${patientName}, your invoice from Faseeh Dental Clinic:\n` +
     `Procedure: ${proc}\n` +
     `Total: PKR ${total.toLocaleString()}\n` +
     `Paid: PKR ${paidN.toLocaleString()}\n` +
-    `Due: PKR ${dueN.toLocaleString()}\n\n` +
+    `Due: PKR ${dueN.toLocaleString()}\n` +
     `Thank you for choosing us.`
   );
 }
 
-function openBillingInvoiceWhatsApp(inv, paid, due) {
-  const pt = currentPatient || {};
-  const name = patientDisplayName(pt);
-  const rawPhone = pt.phone ?? pt.Contact ?? "";
-  const waDigits = phoneDigitsForPakistanWa(rawPhone);
-  if (!waDigits) {
-    showToast("No phone number on file for this patient", "error");
-    return;
-  }
-  const text = buildInvoiceCustomerWhatsAppText(name, inv, paid, due);
-  const url = `https://wa.me/${waDigits}?text=${encodeURIComponent(text)}`;
-  window.open(url, "_blank", "noopener,noreferrer");
+function invoiceCopyKvDueRow(dueN) {
+  if (dueN <= 1e-9) return "";
+  const amt = pkMoney(dueN);
+  return `
+    <div class="invoice-copy-kv-row invoice-copy-kv-due"><span class="invoice-copy-label">Balance Due:</span><span class="invoice-copy-value">${escapeHtml(amt)}</span></div>`;
 }
 
-function printCustomerInvoiceCopy(inv, paid, due) {
+function invoicePrintKvDueRow(dueN) {
+  if (dueN <= 1e-9) return "";
+  const amt = escapeHtml(pkMoney(dueN));
+  return `<div class="invoice-print-kv-row invoice-print-kv-due"><span class="invoice-print-label">Balance Due:</span><span class="invoice-print-value">${amt}</span></div>`;
+}
+
+/** Screen preview markup (inside modal)—header teal via CSS class. */
+function buildInvoiceModalPreviewInnerHTML(inv, _paid, due) {
   const pt = currentPatient || {};
-  const pname = escapeHtml(patientDisplayName(pt));
+  const name = escapeHtml(patientDisplayName(pt));
   const mr = escapeHtml(String(pt.external_id ?? pt["Case No."] ?? pt.id ?? "").trim() || "—");
   const dateStr = escapeHtml(displayDateTs(inv.created_at));
   const procedure = escapeHtml(String(inv.procedure ?? "").trim() || "—");
   const totalCost = Number(inv.cost || 0);
   const dueN = Math.max(0, Number(due || 0));
+  return `
+    <div class="invoice-copy-preview-shell">
+      <h2 class="invoice-copy-brand">Faseeh Dental Clinic</h2>
+      <p class="invoice-copy-sheet-title">Patient Invoice</p>
+      <hr class="invoice-copy-rule" />
+      <div class="invoice-copy-kv-grid">
+        <div class="invoice-copy-kv-row"><span class="invoice-copy-label">Patient</span><span class="invoice-copy-value">${name}</span></div>
+        <div class="invoice-copy-kv-row"><span class="invoice-copy-label">MR Number</span><span class="invoice-copy-value">${mr}</span></div>
+        <div class="invoice-copy-kv-row"><span class="invoice-copy-label">Date</span><span class="invoice-copy-value">${dateStr}</span></div>
+        <div class="invoice-copy-kv-row"><span class="invoice-copy-label">Procedure</span><span class="invoice-copy-value">${procedure}</span></div>
+        <div class="invoice-copy-kv-row"><span class="invoice-copy-label">Total Cost:</span><span class="invoice-copy-value">${escapeHtml(pkMoney(totalCost))}</span></div>
+        ${invoiceCopyKvDueRow(dueN)}
+      </div>
+      <hr class="invoice-copy-rule" />
+      <footer class="invoice-copy-foot">Thank you for choosing Faseeh Dental Clinic</footer>
+    </div>`;
+}
 
-  let dueColHtml = "";
-  let dueCellsHtml = "";
-  if (dueN > 1e-9) {
-    dueColHtml = '<th scope="col" class="invoice-print-due-heading">Balance Due (PKR)</th>';
-    dueCellsHtml = `<td class="invoice-print-due-cell">${escapeHtml(pkMoney(dueN))}</td>`;
-  }
+/** Print-only #invoice-print-area body—large black header via CSS @media print. */
+function buildInvoicePrintAreaInnerHTML(inv, _paid, due) {
+  const pt = currentPatient || {};
+  const name = escapeHtml(patientDisplayName(pt));
+  const mr = escapeHtml(String(pt.external_id ?? pt["Case No."] ?? pt.id ?? "").trim() || "—");
+  const dateStr = escapeHtml(displayDateTs(inv.created_at));
+  const procedure = escapeHtml(String(inv.procedure ?? "").trim() || "—");
+  const totalCost = Number(inv.cost || 0);
+  const dueN = Math.max(0, Number(due || 0));
+  return `
+    <h1 class="invoice-print-brand">Faseeh Dental Clinic</h1>
+    <p class="invoice-print-sheet-title">Patient Invoice</p>
+    <hr class="invoice-print-rule" />
+    <div class="invoice-print-kv-grid">
+      <div class="invoice-print-kv-row"><span class="invoice-print-label">Patient</span><span class="invoice-print-value">${name}</span></div>
+      <div class="invoice-print-kv-row"><span class="invoice-print-label">MR Number</span><span class="invoice-print-value">${mr}</span></div>
+      <div class="invoice-print-kv-row"><span class="invoice-print-label">Date</span><span class="invoice-print-value">${dateStr}</span></div>
+      <div class="invoice-print-kv-row"><span class="invoice-print-label">Procedure</span><span class="invoice-print-value">${procedure}</span></div>
+      <div class="invoice-print-kv-row"><span class="invoice-print-label">Total Cost:</span><span class="invoice-print-value">${escapeHtml(pkMoney(totalCost))}</span></div>
+      ${invoicePrintKvDueRow(dueN)}
+    </div>
+    <hr class="invoice-print-rule" />
+    <footer class="invoice-print-foot">Thank you for choosing Faseeh Dental Clinic</footer>`;
+}
 
+function runInvoiceCustomerPdfPrint(inv, paid, due) {
   const wrap = document.createElement("div");
   wrap.id = "invoice-print-area";
   wrap.className = "invoice-print-sheet";
-  wrap.innerHTML = `
-    <header class="invoice-print-clinic-title">Faseeh Dental Clinic</header>
-    <p class="invoice-print-subtitle">Patient Invoice</p>
-    <hr class="invoice-print-rule" />
-    <div class="invoice-print-meta">
-      <p><strong>Name:</strong> ${pname}</p>
-      <p><strong>MR Number:</strong> ${mr}</p>
-    </div>
-    <table class="invoice-print-table">
-      <thead>
-        <tr>
-          <th scope="col">Date</th>
-          <th scope="col">Procedure</th>
-          <th scope="col">Total Cost (PKR)</th>
-          ${dueColHtml}
-        </tr>
-      </thead>
-      <tbody>
-        <tr>
-          <td>${dateStr}</td>
-          <td>${procedure}</td>
-          <td>${escapeHtml(pkMoney(totalCost))}</td>
-          ${dueCellsHtml}
-        </tr>
-      </tbody>
-    </table>
-    <footer class="invoice-print-footer">Thank you for choosing Faseeh Dental Clinic</footer>`;
+  wrap.innerHTML = buildInvoicePrintAreaInnerHTML(inv, paid, due);
 
   document.body.classList.add("cp-invoice-printing");
   document.body.appendChild(wrap);
@@ -144,6 +153,46 @@ function printCustomerInvoiceCopy(inv, paid, due) {
   window.addEventListener("afterprint", cleanup);
   window.print();
   setTimeout(cleanup, 2000);
+}
+
+function sendCustomerInvoiceWhatsApp(inv, paid, due) {
+  const pt = currentPatient || {};
+  const name = patientDisplayName(pt);
+  const rawPhone = pt.phone ?? pt.Contact ?? "";
+  const digits = waDigitsFromPakistanPhone(rawPhone);
+  if (!digits) {
+    showToast("No phone number on file for this patient", "error");
+    return;
+  }
+  const msg = whatsappInvoiceMessage(name, inv, paid, due);
+  const url = `https://wa.me/${digits}?text=${encodeURIComponent(msg)}`;
+  window.open(url, "_blank", "noopener,noreferrer");
+}
+
+function openCustomerInvoiceCopyModal(inv, paid, due) {
+  const overlay = document.createElement("div");
+  overlay.className = "invoice-copy-overlay";
+  overlay.innerHTML = `
+    <div class="invoice-copy-modal" role="dialog" aria-labelledby="invoiceCopyHeading">
+      <button type="button" class="invoice-copy-x" aria-label="Close">&times;</button>
+      <div id="invoiceCopyHeading" class="invoice-copy-modal-body">${buildInvoiceModalPreviewInnerHTML(inv, paid, due)}</div>
+      <div class="invoice-copy-modal-actions">
+        <button type="button" class="btn invoice-copy-btn-pdf">Open PDF</button>
+        <button type="button" class="btn invoice-copy-btn-wa">Send via WhatsApp</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+
+  const close = () => overlay.remove();
+
+  overlay.querySelector(".invoice-copy-x").onclick = close;
+  overlay.addEventListener("click", (e) => {
+    if (e.target === overlay) close();
+  });
+
+  overlay.querySelector(".invoice-copy-btn-pdf").onclick = () => runInvoiceCustomerPdfPrint(inv, paid, due);
+
+  overlay.querySelector(".invoice-copy-btn-wa").onclick = () => sendCustomerInvoiceWhatsApp(inv, paid, due);
 }
 
 function ensureSavingPeekEl() {
@@ -561,10 +610,7 @@ function paintBillingInvoiceCards() {
         <button type="button" class="btn btn-primary btn-small addPay">+ Payment</button>
         <button type="button" class="btn btn-secondary btn-small editInv">Edit</button>
         <button type="button" class="btn btn-danger btn-small delInv">Delete</button>
-      </div>
-      <div class="billing-copy-row" style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap;">
-        <button type="button" class="btn btn-secondary btn-small billing-gen-copy">Generate Customer Copy</button>
-        <button type="button" class="btn btn-secondary btn-small billing-wa-share">WhatsApp</button>
+        <button type="button" class="btn btn-secondary btn-small billing-customer-copy">Customer Copy</button>
       </div>`
       : `<p class="patientSmall" style="margin-bottom:8px;">Saving invoice…</p>`;
     card.innerHTML = `
@@ -608,10 +654,9 @@ function paintBillingInvoiceCards() {
         await renderPatientBilling();
       };
     }
-    const genCopyBtn = card.querySelector(".billing-gen-copy");
-    if (genCopyBtn && synced) genCopyBtn.onclick = () => printCustomerInvoiceCopy(inv, paid, due);
-    const waBtn = card.querySelector(".billing-wa-share");
-    if (waBtn && synced) waBtn.onclick = () => openBillingInvoiceWhatsApp(inv, paid, due);
+    const customerCopyBtn = card.querySelector(".billing-customer-copy");
+    if (customerCopyBtn && synced)
+      customerCopyBtn.onclick = () => openCustomerInvoiceCopyModal(inv, paid, due);
     list.appendChild(card);
   });
 }
