@@ -53,84 +53,66 @@ function waDigitsFromPakistanPhone(raw) {
   return `92${d}`;
 }
 
-function whatsappInvoiceMessage(patientName, inv, paid, due) {
-  const proc = String(inv?.procedure ?? "").trim() || "—";
-  const total = Number(inv?.cost ?? 0);
-  const paidN = Number(paid || 0);
-  const dueN = Math.max(0, Number(due ?? 0));
-  return (
-    `Dear ${patientName}, your invoice from Faseeh Dental Clinic:\n` +
-    `Procedure: ${proc}\n` +
-    `Total: PKR ${total.toLocaleString()}\n` +
-    `Paid: PKR ${paidN.toLocaleString()}\n` +
-    `Due: PKR ${dueN.toLocaleString()}\n` +
-    `Thank you for choosing us.`
-  );
+function whatsappInvoiceMessage(patientName) {
+  return `Hi ${patientName}, here's your invoice from your visit at Faseeh Dental Clinic. Thank you!`;
 }
 
-function invoiceCopyKvDueRow(dueN) {
-  if (dueN <= 1e-9) return "";
-  const amt = pkMoney(dueN);
-  return `
-    <div class="invoice-copy-kv-row invoice-copy-kv-due"><span class="invoice-copy-label">Balance Due:</span><span class="invoice-copy-value">${escapeHtml(amt)}</span></div>`;
-}
-
-function invoicePrintKvDueRow(dueN) {
-  if (dueN <= 1e-9) return "";
-  const amt = escapeHtml(pkMoney(dueN));
-  return `<div class="invoice-print-kv-row invoice-print-kv-due"><span class="invoice-print-label">Balance Due:</span><span class="invoice-print-value">${amt}</span></div>`;
-}
-
-/** Screen preview markup (inside modal)—header teal via CSS class. */
-function buildInvoiceModalPreviewInnerHTML(inv, _paid, due) {
+/** Shared HTML for modal preview and #invoice-print-area (screen + print). */
+function buildPatientInvoiceMarkup(inv, paid, due) {
   const pt = currentPatient || {};
   const name = escapeHtml(patientDisplayName(pt));
   const mr = escapeHtml(String(pt.external_id ?? pt["Case No."] ?? pt.id ?? "").trim() || "—");
+  const phoneRaw = String(pt.phone ?? pt.Contact ?? "").trim();
+  const phone = phoneRaw ? escapeHtml(phoneRaw) : "—";
   const dateStr = escapeHtml(displayDateTs(inv.created_at));
+  const invId = escapeHtml(String(inv.id ?? "—"));
   const procedure = escapeHtml(String(inv.procedure ?? "").trim() || "—");
   const totalCost = Number(inv.cost || 0);
-  const dueN = Math.max(0, Number(due || 0));
+  const paidN = Number(paid || 0);
+  const dueN = Math.max(0, Number(due ?? 0));
+  const costStr = escapeHtml(pkMoney(totalCost));
+  const paidStr = escapeHtml(pkMoney(paidN));
+  const dueStr = escapeHtml(pkMoney(dueN));
+  const dueRow =
+    dueN > 1e-9
+      ? `<tr class="inv-doc-row-due"><td>Balance Due</td><td class="inv-doc-num">${dueStr}</td></tr>`
+      : "";
+  const dueLineClass = dueN > 1e-9 ? " inv-doc-total-due" : "";
   return `
-    <div class="invoice-copy-preview-shell">
-      <h2 class="invoice-copy-brand">Faseeh Dental Clinic</h2>
-      <p class="invoice-copy-sheet-title">Patient Invoice</p>
-      <hr class="invoice-copy-rule" />
-      <div class="invoice-copy-kv-grid">
-        <div class="invoice-copy-kv-row"><span class="invoice-copy-label">Patient</span><span class="invoice-copy-value">${name}</span></div>
-        <div class="invoice-copy-kv-row"><span class="invoice-copy-label">MR Number</span><span class="invoice-copy-value">${mr}</span></div>
-        <div class="invoice-copy-kv-row"><span class="invoice-copy-label">Date</span><span class="invoice-copy-value">${dateStr}</span></div>
-        <div class="invoice-copy-kv-row"><span class="invoice-copy-label">Procedure</span><span class="invoice-copy-value">${procedure}</span></div>
-        <div class="invoice-copy-kv-row"><span class="invoice-copy-label">Total Cost:</span><span class="invoice-copy-value">${escapeHtml(pkMoney(totalCost))}</span></div>
-        ${invoiceCopyKvDueRow(dueN)}
+    <div class="inv-doc-root">
+      <header class="inv-doc-top">
+        <span class="inv-doc-clinic">Faseeh Dental Clinic</span>
+        <span class="inv-doc-title">INVOICE</span>
+      </header>
+      <div class="inv-doc-teal-line" aria-hidden="true"></div>
+      <div class="inv-doc-meta-row">
+        <div class="inv-doc-meta-left">Patient: ${name} <span class="inv-doc-sep">|</span> MR#: ${mr} <span class="inv-doc-sep">|</span> Phone: ${phone}</div>
+        <div class="inv-doc-meta-right">Date: ${dateStr} <span class="inv-doc-sep">|</span> Invoice #: ${invId}</div>
       </div>
-      <hr class="invoice-copy-rule" />
-      <footer class="invoice-copy-foot">Thank you for choosing Faseeh Dental Clinic</footer>
+      <div class="inv-doc-divider"></div>
+      <table class="inv-doc-table">
+        <thead><tr><th scope="col">Description</th><th scope="col">Amount</th></tr></thead>
+        <tbody>
+          <tr><td>${procedure}</td><td class="inv-doc-num">${costStr}</td></tr>
+          ${dueRow}
+        </tbody>
+      </table>
+      <div class="inv-doc-totals">
+        <div>Total: ${costStr}</div>
+        <div>Paid: ${paidStr}</div>
+        <div class="inv-doc-total-line${dueLineClass}">Due: ${dueStr}</div>
+      </div>
+      <div class="inv-doc-divider"></div>
+      <footer class="inv-doc-foot">Thank you for choosing Faseeh Dental Clinic</footer>
     </div>`;
 }
 
-/** Print-only #invoice-print-area body—large black header via CSS @media print. */
-function buildInvoicePrintAreaInnerHTML(inv, _paid, due) {
-  const pt = currentPatient || {};
-  const name = escapeHtml(patientDisplayName(pt));
-  const mr = escapeHtml(String(pt.external_id ?? pt["Case No."] ?? pt.id ?? "").trim() || "—");
-  const dateStr = escapeHtml(displayDateTs(inv.created_at));
-  const procedure = escapeHtml(String(inv.procedure ?? "").trim() || "—");
-  const totalCost = Number(inv.cost || 0);
-  const dueN = Math.max(0, Number(due || 0));
-  return `
-    <h1 class="invoice-print-brand">Faseeh Dental Clinic</h1>
-    <p class="invoice-print-sheet-title">Patient Invoice</p>
-    <hr class="invoice-print-rule" />
-    <div class="invoice-print-kv-grid">
-      <div class="invoice-print-kv-row"><span class="invoice-print-label">Patient</span><span class="invoice-print-value">${name}</span></div>
-      <div class="invoice-print-kv-row"><span class="invoice-print-label">MR Number</span><span class="invoice-print-value">${mr}</span></div>
-      <div class="invoice-print-kv-row"><span class="invoice-print-label">Date</span><span class="invoice-print-value">${dateStr}</span></div>
-      <div class="invoice-print-kv-row"><span class="invoice-print-label">Procedure</span><span class="invoice-print-value">${procedure}</span></div>
-      <div class="invoice-print-kv-row"><span class="invoice-print-label">Total Cost:</span><span class="invoice-print-value">${escapeHtml(pkMoney(totalCost))}</span></div>
-      ${invoicePrintKvDueRow(dueN)}
-    </div>
-    <hr class="invoice-print-rule" />
-    <footer class="invoice-print-foot">Thank you for choosing Faseeh Dental Clinic</footer>`;
+function buildInvoiceModalPreviewInnerHTML(inv, paid, due) {
+  return `<div class="invoice-copy-preview-shell">${buildPatientInvoiceMarkup(inv, paid, due)}</div>`;
+}
+
+function buildInvoicePrintAreaInnerHTML(inv, paid, due) {
+  return buildPatientInvoiceMarkup(inv, paid, due);
 }
 
 function runInvoiceCustomerPdfPrint(inv, paid, due) {
@@ -155,7 +137,7 @@ function runInvoiceCustomerPdfPrint(inv, paid, due) {
   setTimeout(cleanup, 2000);
 }
 
-function sendCustomerInvoiceWhatsApp(inv, paid, due) {
+function sendCustomerInvoiceWhatsApp(_inv, _paid, _due) {
   const pt = currentPatient || {};
   const name = patientDisplayName(pt);
   const rawPhone = pt.phone ?? pt.Contact ?? "";
@@ -164,7 +146,7 @@ function sendCustomerInvoiceWhatsApp(inv, paid, due) {
     showToast("No phone number on file for this patient", "error");
     return;
   }
-  const msg = whatsappInvoiceMessage(name, inv, paid, due);
+  const msg = whatsappInvoiceMessage(name);
   const url = `https://wa.me/${digits}?text=${encodeURIComponent(msg)}`;
   window.open(url, "_blank", "noopener,noreferrer");
 }
