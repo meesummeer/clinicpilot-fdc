@@ -1006,6 +1006,7 @@ function openPaymentModal(inv, patient_id) {
 }
 
 function openEditInvoiceModal(inv, onSave) {
+  const procedures = ["RCT", "Scaling", "Extraction", "Diagnosis", "Filling", "Crown", "Denture", "Bridge", "Implant", "Whitening", "Other"];
   const ov = document.createElement("div");
   ov.className = "modal";
   ov.innerHTML = `<div class="modal-content modal-content--billing">
@@ -1022,25 +1023,61 @@ function openEditInvoiceModal(inv, onSave) {
       <button type="button" id="eSave" class="btn btn-primary">Save</button>
     </div>
   </div>`;
-  const procDatalist = `
-<input id="eProc" type="text" list="eProcList" value="${escapeHtml(String(inv.procedure || ""))}" autocomplete="off" style="width:100%; padding:8px; border:1px solid #ccd; border-radius:8px; font-size:14px; box-sizing:border-box;">
-<datalist id="eProcList">
-  <option value="RCT">
-  <option value="Scaling">
-  <option value="Extraction">
-  <option value="Diagnosis">
-  <option value="Filling">
-  <option value="Crown">
-  <option value="Denture">
-  <option value="Bridge">
-  <option value="Implant">
-  <option value="Whitening">
-  <option value="Other">
-</datalist>`;
-  ov.querySelector("#eProcField").innerHTML = procDatalist;
+  ov.querySelector("#eProcField").innerHTML = `
+<div id="eProcWrap" style="position:relative;">
+  <input id="eProc" type="text" value="${escapeHtml(String(inv.procedure || ""))}" autocomplete="off" style="width:100%; padding:8px; border:1px solid #ccd; border-radius:8px; font-size:14px; box-sizing:border-box;">
+  <div id="eProcDropdown" style="display:none; position:absolute; top:calc(100% + 4px); left:0; right:0; z-index:9999; background:#fff; border:1px solid #ccd; border-radius:8px; box-shadow:0 10px 24px rgba(0,0,0,0.12); max-height:200px; overflow-y:auto;"></div>
+</div>`;
   document.body.appendChild(ov);
+  const procWrap = ov.querySelector("#eProcWrap");
+  const procInput = ov.querySelector("#eProc");
+  const procDropdown = ov.querySelector("#eProcDropdown");
+  const renderProcedureOptions = (needle = "") => {
+    const q = String(needle || "").trim().toLowerCase();
+    const filtered = procedures.filter((p) => p.toLowerCase().includes(q));
+    procDropdown.innerHTML = filtered
+      .map((p) => `<div class="e-proc-item" data-value="${escapeHtml(p)}" style="padding:8px 12px; cursor:pointer;">${escapeHtml(p)}</div>`)
+      .join("");
+    if (!filtered.length) {
+      procDropdown.innerHTML = '<div style="padding:8px 12px; color:#6b7280;">No matches</div>';
+    }
+  };
+  const showProcedureDropdown = () => {
+    renderProcedureOptions(procInput.value);
+    procDropdown.style.display = "block";
+  };
+  const hideProcedureDropdown = () => {
+    procDropdown.style.display = "none";
+  };
+  procInput.addEventListener("focus", showProcedureDropdown);
+  procInput.addEventListener("click", showProcedureDropdown);
+  procInput.addEventListener("input", () => {
+    renderProcedureOptions(procInput.value);
+    procDropdown.style.display = "block";
+  });
+  procDropdown.addEventListener("mouseover", (e) => {
+    const item = e.target.closest(".e-proc-item");
+    if (item) item.style.background = "#f0f9f9";
+  });
+  procDropdown.addEventListener("mouseout", (e) => {
+    const item = e.target.closest(".e-proc-item");
+    if (item) item.style.background = "transparent";
+  });
+  procDropdown.addEventListener("click", (e) => {
+    const item = e.target.closest(".e-proc-item");
+    if (!item) return;
+    procInput.value = item.dataset.value || "";
+    hideProcedureDropdown();
+  });
+  const onDocClick = (e) => {
+    if (!procWrap.contains(e.target)) hideProcedureDropdown();
+  };
+  document.addEventListener("click", onDocClick);
   ov.querySelector("#eNotes").value = inv.notes ?? "";
-  ov.querySelector("#eCancel").onclick = () => ov.remove();
+  ov.querySelector("#eCancel").onclick = () => {
+    document.removeEventListener("click", onDocClick);
+    ov.remove();
+  };
   ov.querySelector("#eSave").onclick = async () => {
     const procedure = readProcedureChoice(ov.querySelector("#eProc"));
     if (!procedure) return showToast("Procedure is required", "error");
@@ -1054,6 +1091,7 @@ function openEditInvoiceModal(inv, onSave) {
       notes
     });
     showToast("Invoice updated");
+    document.removeEventListener("click", onDocClick);
     ov.remove();
     onSave?.();
   };
