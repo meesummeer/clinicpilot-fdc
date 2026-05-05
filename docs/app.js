@@ -65,15 +65,16 @@ function runInvoiceCustomerPdfPrint(inv, paid, due) {
   document.body.appendChild(sheet);
 
   let cleaned = false;
+  const prevAfterPrint = window.onafterprint;
   const cleanup = () => {
     if (cleaned) return;
     cleaned = true;
     sheet.remove();
-    window.removeEventListener("afterprint", cleanup);
+    window.onafterprint = prevAfterPrint || null;
   };
-  window.addEventListener("afterprint", cleanup);
+  window.onafterprint = () => cleanup();
   window.print();
-  setTimeout(cleanup, 2000);
+  setTimeout(cleanup, 1000);
 }
 
 function buildCustomerCopyInvoiceHtml(inv, paid, due) {

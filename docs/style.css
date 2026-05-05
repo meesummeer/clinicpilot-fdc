@@ -1048,81 +1048,6 @@ body {
   display: none;
 }
 
-@media print {
-  body {
-    overflow: visible;
-    height: auto;
-    background: #fff;
-  }
-
-  .app {
-    height: auto;
-    overflow: visible;
-    display: block;
-  }
-
-  .sidebar,
-  .topbar,
-  .toolbar-row,
-  .billing-kpis,
-  .billing-toolbar,
-  .screen-only,
-  .toast-host,
-  .loading-overlay,
-  .drawer,
-  #homeSection,
-  #patientsSection,
-  #settingsSection {
-    display: none !important;
-  }
-
-  #billingsSection {
-    display: block !important;
-  }
-
-  #billingsSection.pane {
-    display: block !important;
-  }
-
-  .print-header {
-    display: block !important;
-    font-size: 11pt;
-    font-weight: 600;
-    margin-bottom: 12pt;
-    color: #000;
-  }
-
-  .workspace {
-    padding: 0;
-    overflow: visible;
-  }
-
-  .billing-table-card .table-scroll {
-    overflow: visible;
-  }
-
-  .billing-table {
-    min-width: 100%;
-    border: 1px solid #000;
-    color: #000 !important;
-  }
-
-  .billing-table th,
-  .billing-table td {
-    color: #000 !important;
-    border-color: #000;
-  }
-
-  .statusBadge {
-    border: 1px solid currentColor;
-    print-color-adjust: exact;
-    -webkit-print-color-adjust: exact;
-  }
-
-  .status-paid { background: #dcfce7 !important; color: #14532d !important; }
-  .status-partial { background: #ffedd5 !important; color: #78350f !important; }
-  .status-unpaid { background: #fee2e2 !important; color: #991b1b !important; }
-}
 
 /* ----- Patient billing: customer invoice copy modal + PDF print ----- */
 .invoice-copy-overlay {
@@ -1464,81 +1389,6 @@ body {
   box-sizing: border-box;
 }
 
-@media print {
-  html:has(body.cp-invoice-printing),
-  body.cp-invoice-printing {
-    height: auto !important;
-    overflow: visible !important;
-    background: #fff !important;
-    margin: 0 !important;
-    padding: 0 !important;
-  }
-
-  /* Customer invoice PDF: hide full app chrome; print only injected sheet. */
-  body.cp-invoice-printing > *:not(#invoice-print-area) {
-    display: none !important;
-  }
-
-  body.cp-invoice-printing #invoice-print-area {
-    visibility: visible !important;
-    position: static !important;
-    display: block !important;
-    left: auto !important;
-    top: auto !important;
-    width: 100% !important;
-    max-width: none !important;
-    margin: 0 !important;
-    padding: 40px !important;
-    box-sizing: border-box !important;
-    background: #fff !important;
-    color: #000 !important;
-    box-shadow: none !important;
-  }
-
-  body.cp-invoice-printing #invoice-print-area thead th {
-    background: #1f2937 !important;
-    color: #fff !important;
-    print-color-adjust: exact;
-    -webkit-print-color-adjust: exact;
-  }
-
-  body.cp-invoice-printing #invoice-print-area .inv-doc-row-due td,
-  body.cp-invoice-printing #invoice-print-area .inv-doc-total-due {
-    color: #b91c1c !important;
-    print-color-adjust: exact;
-    -webkit-print-color-adjust: exact;
-  }
-
-  body.cp-invoice-printing #invoice-print-area .inv-doc-logo-main {
-    color: #009688 !important;
-    print-color-adjust: exact;
-    -webkit-print-color-adjust: exact;
-  }
-
-  body.cp-invoice-printing #invoice-print-area .inv-doc-title {
-    color: #111 !important;
-  }
-
-  body.cp-invoice-printing #invoice-print-area .inv-doc-teal-line {
-    background: #009688 !important;
-    print-color-adjust: exact;
-    -webkit-print-color-adjust: exact;
-  }
-
-  body.cp-invoice-printing #invoice-print-area .inv-doc-table tbody tr:nth-child(odd) {
-    background: #f9fafb !important;
-    print-color-adjust: exact;
-    -webkit-print-color-adjust: exact;
-  }
-
-  body.cp-invoice-printing #invoice-print-area .inv-doc-table tbody tr:nth-child(even) {
-    background: #fff !important;
-  }
-
-  body.cp-invoice-printing #invoice-print-area .inv-doc-foot {
-    color: #6b7280 !important;
-  }
-}
 
 .billing-payments-table {
   table-layout: fixed;
@@ -1569,21 +1419,21 @@ body {
 }
 
 @media print {
-  * {
+  body > *:not(#invoice-print-area) {
     display: none !important;
   }
-
-  #invoice-print-area,
+  #invoice-print-area {
+    display: block !important;
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    width: 100% !important;
+    padding: 40px !important;
+    background: white !important;
+    z-index: 99999 !important;
+  }
   #invoice-print-area * {
     display: revert !important;
-  }
-
-  #invoice-print-area {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    padding: 40px;
-    box-sizing: border-box;
+    visibility: visible !important;
   }
 }
