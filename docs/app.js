@@ -83,10 +83,7 @@ function buildPatientInvoiceMarkup(inv, paid, due) {
   return `
     <div class="inv-doc-root">
       <header class="inv-doc-top">
-        <div class="inv-doc-logo">
-          <div class="inv-doc-logo-main">FASEEH</div>
-          <div class="inv-doc-logo-sub">DENTAL CLINIC</div>
-        </div>
+        <div class="inv-doc-logo"><img src="/clinicpilot-fdc/fdc-logo.png" style="height:60px; width:auto;"></div>
         <div class="inv-doc-head-right">
           <div class="inv-doc-title">INVOICE</div>
           <div class="inv-doc-number"># ${invId}</div>
