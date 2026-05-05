@@ -322,44 +322,12 @@ function escapeHtml(text) {
 }
 
 function billingProcedureOptionTags() {
-  return BILLING_PROCEDURE_OPTIONS.map((p) => `<option value="${p}">${p}</option>`).join("");
+  return BILLING_PROCEDURE_OPTIONS.map((p) => `<option value="${p}">`).join("");
 }
 
-/** Selected procedure label from a select + optional "Other" text field. */
-function readProcedureChoice(selectEl, otherInputEl) {
-  const v = (selectEl?.value || "").trim();
-  if (v === "Other") return (otherInputEl?.value || "").trim();
-  return v;
-}
-
-function wireBillingProcedureOtherToggle(root, selectSel, wrapSel, inputSel) {
-  const sel = root.querySelector(selectSel);
-  const wrap = root.querySelector(wrapSel);
-  const input = root.querySelector(inputSel);
-  if (!sel || !wrap) return;
-  const sync = () => {
-    const isOther = sel.value === "Other";
-    wrap.classList.toggle("hidden", !isOther);
-    if (!isOther && input) input.value = "";
-  };
-  sel.addEventListener("change", sync);
-  sync();
-}
-
-/** Pre-fill procedure select when stored value may be custom (not in preset list). */
-function applyStoredProcedure(selectEl, otherWrap, otherInput, stored) {
-  const s = String(stored || "").trim();
-  const preset = new Set(BILLING_PROCEDURE_OPTIONS);
-  preset.delete("Other");
-  if (preset.has(s)) {
-    selectEl.value = s;
-    if (otherInput) otherInput.value = "";
-  } else if (s) {
-    selectEl.value = "Other";
-    if (otherInput) otherInput.value = s;
-  } else selectEl.value = BILLING_PROCEDURE_OPTIONS[0];
-  const isOther = selectEl.value === "Other";
-  otherWrap.classList.toggle("hidden", !isOther);
+/** Selected procedure label from input/datalist (free-typed allowed). */
+function readProcedureChoice(inputEl) {
+  return (inputEl?.value || "").trim();
 }
 
 const THEME_MAP = { cyan: "#009688", purple: "#7c3aed", blue: "#1d4ed8" };
@@ -737,22 +705,19 @@ async function renderPatientBilling() {
       <div class="billing-add-form">
         <div class="billing-add-row">
           <input id="bDate" type="date" value="${d}">
-          <select id="bProcedure" class="billing-select" aria-label="Procedure">${billingProcedureOptionTags()}</select>
+          <input id="bProcedure" type="text" class="billing-select" list="procList" placeholder="Select or type procedure..." autocomplete="off">
+          <datalist id="procList">${billingProcedureOptionTags()}</datalist>
           <input id="bCost" type="number" placeholder="Total Cost" style="max-width:120px;">
           <input id="bLab" type="number" placeholder="Lab Cost" style="max-width:120px;">
           <button type="button" id="addInvoiceBtn" class="btn btn-primary">+ Add Invoice</button>
-        </div>
-        <div id="bProcedureOtherWrap" class="billing-other-row hidden">
-          <input id="bProcedureOther" type="text" class="billing-other-input" placeholder="Custom procedure name">
         </div>
         <textarea id="bNotes" class="billing-notes" placeholder="Treatment notes, observations..." rows="3"></textarea>
       </div>
       <div id="billingList"></div>
     </div>`;
-  wireBillingProcedureOtherToggle(c, "#bProcedure", "#bProcedureOtherWrap", "#bProcedureOther");
 
   $("#addInvoiceBtn").onclick = async () => {
-    const procedure = readProcedureChoice($("#bProcedure"), $("#bProcedureOther"));
+    const procedure = readProcedureChoice($("#bProcedure"));
     if (!procedure) return showToast("Procedure is required", "error");
     const notes = ($("#bNotes").value || "").trim();
     const costVal = Number($("#bCost").value || 0);
@@ -1047,10 +1012,8 @@ function openEditInvoiceModal(inv, onSave) {
     <h3>Edit Invoice #${inv.id}</h3>
     <label>Date</label><input id="eDate" type="date" value="${localYMD(new Date(inv.created_at))}">
     <label>Procedure</label>
-    <select id="eProcedure" class="billing-select">${billingProcedureOptionTags()}</select>
-    <div id="eProcedureOtherWrap" class="billing-other-row hidden">
-      <input id="eProcedureOther" type="text" class="billing-other-input" placeholder="Custom procedure name">
-    </div>
+    <input id="eProcedure" type="text" class="billing-select" list="procListEdit" placeholder="Select or type procedure..." autocomplete="off" value="${escapeHtml(String(inv.procedure || ""))}">
+    <datalist id="procListEdit">${billingProcedureOptionTags()}</datalist>
     <label>Total Cost</label><input id="eCost" type="number" value="${Number(inv.cost || 0)}">
     <label>Lab Cost</label><input id="eLab" type="number" value="${Number(inv.lab_cost || 0)}">
     <label>Notes</label>
@@ -1061,15 +1024,10 @@ function openEditInvoiceModal(inv, onSave) {
     </div>
   </div>`;
   document.body.appendChild(ov);
-  const mc = ov.querySelector(".modal-content");
-  applyStoredProcedure(ov.querySelector("#eProcedure"), ov.querySelector("#eProcedureOtherWrap"), ov.querySelector("#eProcedureOther"), inv.procedure || "");
-  wireBillingProcedureOtherToggle(mc, "#eProcedure", "#eProcedureOtherWrap", "#eProcedureOther");
   ov.querySelector("#eNotes").value = inv.notes ?? "";
   ov.querySelector("#eCancel").onclick = () => ov.remove();
   ov.querySelector("#eSave").onclick = async () => {
-    const sel = ov.querySelector("#eProcedure");
-    const otherIn = ov.querySelector("#eProcedureOther");
-    const procedure = readProcedureChoice(sel, otherIn);
+    const procedure = readProcedureChoice(ov.querySelector("#eProcedure"));
     if (!procedure) return showToast("Procedure is required", "error");
     const notes = (ov.querySelector("#eNotes").value || "").trim();
     await window.api.invoices.update({
