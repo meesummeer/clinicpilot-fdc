@@ -15,21 +15,30 @@
 <body>
   <div class="app">
     <aside class="sidebar">
-      <div class="sidebar-brand">
-        <div class="sidebar-brand__logo" aria-hidden="true"></div>
-        <div class="sidebar-brand__text">
-          <span class="sidebar-brand__title">ClinicPilot</span>
-          <span class="sidebar-brand__subtitle">Faseeh Dental Clinic</span>
+      <div class="sidebar-top">
+        <div class="sidebar-brand">
+          <img src="/clinicpilot-fdc/fdc-logo.png" style="width:48px; height:48px; object-fit:contain; border-radius:8px; background:#fff; padding:4px;">
+          <div class="sidebar-brand__text">
+            <span class="sidebar-brand__title">ClinicPilot</span>
+            <span class="sidebar-brand__subtitle">Faseeh Dental Clinic</span>
+          </div>
         </div>
+        <nav class="sidebar-main" aria-label="Primary navigation">
+          <button type="button" class="nav-btn active" data-nav="home"><span class="nav-btn__label">Home</span></button>
+          <button type="button" class="nav-btn" data-nav="patients"><span class="nav-btn__label">Patients</span></button>
+          <button type="button" class="nav-btn" data-nav="billings"><span class="nav-btn__label">Billings</span></button>
+        </nav>
       </div>
-      <nav class="sidebar-main" aria-label="Primary navigation">
-        <button type="button" class="nav-btn active" data-nav="home"><span class="nav-btn__label">Home</span></button>
-        <button type="button" class="nav-btn" data-nav="patients"><span class="nav-btn__label">Patients</span></button>
-        <button type="button" class="nav-btn" data-nav="billings"><span class="nav-btn__label">Billings</span></button>
-      </nav>
-      <div class="sidebar-footer">
-        <button type="button" class="nav-btn" data-nav="settings"><span class="nav-btn__label">Settings</span></button>
-        <button type="button" class="sign-out-btn" onclick="localStorage.removeItem('cp_token'); window.location.href='/login.html';">Sign Out</button>
+      <div class="sidebar-bottom">
+        <div class="sidebar-footer">
+          <button type="button" class="nav-btn" data-nav="settings"><span class="nav-btn__label">Settings</span></button>
+          <button type="button" class="sign-out-btn" onclick="localStorage.removeItem('cp_token'); window.location.href='/login.html';">Sign Out</button>
+        </div>
+        <div class="sidebar-powered">
+          Powered by<br>
+          <span style="color:#009688; font-weight:600;">CyberHealth Solutions</span><br>
+          <span style="opacity:0.6;">Meesum Mir</span>
+        </div>
       </div>
     </aside>
 
