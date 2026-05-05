@@ -1140,8 +1140,8 @@ body {
 .invoice-copy-modal {
   position: relative;
   width: 100%;
-  max-width: 650px;
-  max-height: min(92vh, 900px);
+  max-width: 750px;
+  max-height: 85vh;
   display: flex;
   flex-direction: column;
   gap: 18px;
@@ -1174,7 +1174,7 @@ body {
 .invoice-copy-modal-body {
   flex: 1 1 auto;
   min-height: 0;
-  overflow: auto;
+  overflow-y: auto;
 }
 
 .invoice-copy-preview-shell {
@@ -1566,4 +1566,24 @@ body {
 .billing-payments-table td:nth-child(4) {
   width: 46px;
   text-align: center;
+}
+
+@media print {
+  * {
+    display: none !important;
+  }
+
+  #invoice-print-area,
+  #invoice-print-area * {
+    display: revert !important;
+  }
+
+  #invoice-print-area {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    padding: 40px;
+    box-sizing: border-box;
+  }
 }

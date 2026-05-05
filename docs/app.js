@@ -57,104 +57,18 @@ function whatsappInvoiceMessage(patientName) {
   return `Hi ${patientName}, here's your invoice from your visit at Faseeh Dental Clinic. Thank you!`;
 }
 
-/** Shared HTML for modal preview and #invoice-print-area (screen + print). */
-function buildPatientInvoiceMarkup(inv, paid, due) {
-  const pt = currentPatient || {};
-  const name = escapeHtml(patientDisplayName(pt));
-  const mr = escapeHtml(String(pt.external_id ?? pt["Case No."] ?? pt.id ?? "").trim() || "—");
-  const phoneRaw = String(pt.phone ?? pt.Contact ?? "").trim();
-  const phone = phoneRaw ? escapeHtml(phoneRaw) : "—";
-  const genderRaw = String(pt.gender ?? pt.Gender ?? "").trim();
-  const gender = genderRaw ? escapeHtml(genderRaw) : "—";
-  const dateStr = escapeHtml(displayDateTs(inv.created_at));
-  const invId = escapeHtml(String(inv.id ?? "—"));
-  const procedure = escapeHtml(String(inv.procedure ?? "").trim() || "—");
-  const totalCost = Number(inv.cost || 0);
-  const paidN = Number(paid || 0);
-  const dueN = Math.max(0, Number(due ?? 0));
-  const costStr = escapeHtml(pkMoney(totalCost));
-  const paidStr = escapeHtml(pkMoney(paidN));
-  const dueStr = escapeHtml(pkMoney(dueN));
-  const dueBar =
-    dueN > 1e-9
-      ? `<div class="inv-doc-balance-bar"><span class="inv-doc-balance-label">Balance Due:</span><span class="inv-doc-balance-value">${dueStr}</span></div>`
-      : `<div class="inv-doc-balance-bar inv-doc-balance-paid"><span class="inv-doc-balance-label">Status:</span><span class="inv-doc-balance-value">Paid in Full</span></div>`;
-  const dueLineClass = dueN > 1e-9 ? " inv-doc-total-due" : "";
-  return `
-    <div class="inv-doc-root">
-      <header class="inv-doc-top">
-        <div class="inv-doc-logo"><img src="/clinicpilot-fdc/fdc-logo.png" style="height:60px; width:auto;"></div>
-        <div class="inv-doc-head-right">
-          <div class="inv-doc-title">INVOICE</div>
-          <div class="inv-doc-number"># ${invId}</div>
-        </div>
-      </header>
-      <div class="inv-doc-teal-line" aria-hidden="true"></div>
-      <div class="inv-doc-second-row">
-        <div class="inv-doc-second-left">
-          <div class="inv-doc-doctor">Dr. Faseeh Ur Rehman</div>
-          <div class="inv-doc-doctor-sub">Dentist</div>
-          <div class="inv-doc-doctor-sub">BDS | RDS</div>
-        </div>
-        <div class="inv-doc-second-right"><span class="inv-doc-date-label">Date:</span> <span>${dateStr}</span></div>
-      </div>
-      ${dueBar}
-      <section class="inv-doc-patient-info">
-        <div class="inv-doc-section-title">Patient Information:</div>
-        <div class="inv-doc-patient-name">${name}</div>
-        <div class="inv-doc-patient-meta">MR#: ${mr}</div>
-        <div class="inv-doc-patient-meta">Phone: ${phone}</div>
-        <div class="inv-doc-patient-meta">Gender: ${gender}</div>
-      </section>
-      <div class="inv-doc-divider"></div>
-      <table class="inv-doc-table">
-        <thead><tr><th scope="col">Procedure</th><th scope="col">Quantity</th><th scope="col">Rate</th><th scope="col">Amount</th></tr></thead>
-        <tbody>
-          <tr>
-            <td>${procedure}</td>
-            <td class="inv-doc-center">1</td>
-            <td class="inv-doc-num">${costStr}</td>
-            <td class="inv-doc-num">${costStr}</td>
-          </tr>
-        </tbody>
-      </table>
-      <div class="inv-doc-totals">
-        <div>Total: ${costStr}</div>
-        <div>Paid: ${paidStr}</div>
-        <div class="inv-doc-total-line${dueLineClass}">Due: ${dueStr}</div>
-      </div>
-      <div class="inv-doc-divider"></div>
-      <footer class="inv-doc-foot">
-        <div>Phone: +923211507943</div>
-        <div>Email: faseehdentalclinic@gmail.com</div>
-        <div>Location: Shop 2, L-11 Block-17, Gulshan-e-Iqbal, Karachi</div>
-      </footer>
-    </div>`;
-}
-
-function buildInvoiceModalPreviewInnerHTML(inv, paid, due) {
-  return `<div class="invoice-copy-preview-shell">${buildPatientInvoiceMarkup(inv, paid, due)}</div>`;
-}
-
-function buildInvoicePrintAreaInnerHTML(inv, paid, due) {
-  return buildPatientInvoiceMarkup(inv, paid, due);
-}
-
 function runInvoiceCustomerPdfPrint(inv, paid, due) {
   const wrap = document.createElement("div");
-  wrap.id = "invoice-print-area";
-  wrap.className = "invoice-print-sheet";
-  wrap.innerHTML = buildInvoicePrintAreaInnerHTML(inv, paid, due);
-
-  document.body.classList.add("cp-invoice-printing");
-  document.body.appendChild(wrap);
+  wrap.innerHTML = buildCustomerCopyInvoiceHtml(inv, paid, due);
+  const sheet = wrap.firstElementChild;
+  if (!sheet) return;
+  document.body.appendChild(sheet);
 
   let cleaned = false;
   const cleanup = () => {
     if (cleaned) return;
     cleaned = true;
-    document.body.classList.remove("cp-invoice-printing");
-    wrap.remove();
+    sheet.remove();
     window.removeEventListener("afterprint", cleanup);
   };
   window.addEventListener("afterprint", cleanup);
@@ -162,27 +76,118 @@ function runInvoiceCustomerPdfPrint(inv, paid, due) {
   setTimeout(cleanup, 2000);
 }
 
-function sendCustomerInvoiceWhatsApp(_inv, _paid, _due) {
+function buildCustomerCopyInvoiceHtml(inv, paid, due) {
   const pt = currentPatient || {};
-  const name = patientDisplayName(pt);
-  const rawPhone = pt.phone ?? pt.Contact ?? "";
-  const digits = waDigitsFromPakistanPhone(rawPhone);
-  if (!digits) {
-    showToast("No phone number on file for this patient", "error");
-    return;
-  }
-  const msg = whatsappInvoiceMessage(name);
-  const url = `https://wa.me/${digits}?text=${encodeURIComponent(msg)}`;
-  window.open(url, "_blank", "noopener,noreferrer");
+  const invoiceId = escapeHtml(String(inv?.id ?? "—"));
+  const date = escapeHtml(displayDateTs(inv?.created_at));
+  const patientName = escapeHtml(patientDisplayName(pt));
+  const patientId = escapeHtml(String(pt.external_id ?? pt["Case No."] ?? pt.id ?? "").trim() || "—");
+  const phoneRaw = String(pt.phone ?? pt.Contact ?? "").trim();
+  const phone = phoneRaw ? escapeHtml(phoneRaw) : "—";
+  const genderRaw = String(pt.gender ?? pt.Gender ?? "").trim();
+  const gender = genderRaw ? escapeHtml(genderRaw) : "—";
+  const procedure = escapeHtml(String(inv?.procedure ?? "").trim() || "—");
+  const costN = Number(inv?.cost || 0);
+  const paidN = Number(paid || 0);
+  const dueN = Math.max(0, Number(due ?? 0));
+  const costStr = costN.toLocaleString();
+  const paidStr = paidN.toLocaleString();
+  const dueStr = dueN.toLocaleString();
+  const dueColor = dueN > 0 ? "#c62828" : "#2e7d32";
+  const dueDisplay = dueN > 0 ? `PKR ${dueStr}` : "Paid in Full";
+  const dueTotalsRowStyle = dueN > 0 ? "color:#c62828;" : "";
+  return `
+<div id="invoice-print-area" style="font-family: Arial, sans-serif; background: white; padding: 40px; max-width: 700px; margin: 0 auto; color: #222;">
+  <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:20px;">
+    <div>
+      <img src="/clinicpilot-fdc/fdc-logo.png" style="height:70px; width:auto;">
+    </div>
+    <div style="text-align:right;">
+      <div style="font-size:36px; font-weight:900; color:#2d3748; letter-spacing:2px;">INVOICE</div>
+      <div style="font-size:16px; color:#666;"># ${invoiceId}</div>
+    </div>
+  </div>
+
+  <hr style="border:none; border-top:2px solid #009688; margin:0 0 16px 0;">
+
+  <div style="display:flex; justify-content:space-between; margin-bottom:16px;">
+    <div>
+      <div style="font-weight:700; font-size:15px;">Dr. Faseeh Ur Rehman</div>
+      <div style="color:#555; font-size:13px;">Dentist</div>
+      <div style="color:#555; font-size:13px;">BDS | RDS</div>
+    </div>
+    <div style="text-align:right;">
+      <div style="color:#555; font-size:13px;">Date:</div>
+      <div style="font-weight:600; font-size:14px;">${date}</div>
+    </div>
+  </div>
+
+  <div style="background:#f0f0f0; padding:12px 16px; display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; border-radius:4px;">
+    <span style="font-weight:700; font-size:14px;">Balance Due:</span>
+    <span style="font-weight:700; font-size:16px; color:${dueColor};">${dueDisplay}</span>
+  </div>
+
+  <div style="margin-bottom:20px;">
+    <div style="color:#888; font-size:12px; margin-bottom:6px;">Patient Information:</div>
+    <div style="font-weight:700; font-size:15px;">Name: ${patientName}</div>
+    <div style="font-size:13px; color:#444;">MR#: ${patientId}</div>
+    <div style="font-size:13px; color:#444;">Phone: ${phone}</div>
+    <div style="font-size:13px; color:#444;">Gender: ${gender}</div>
+  </div>
+
+  <table style="width:100%; border-collapse:collapse; margin-bottom:20px;">
+    <thead>
+      <tr style="background:#2d3748; color:white;">
+        <th style="padding:10px 12px; text-align:left; font-size:13px;">Procedure</th>
+        <th style="padding:10px 12px; text-align:center; font-size:13px;">Quantity</th>
+        <th style="padding:10px 12px; text-align:right; font-size:13px;">Rate</th>
+        <th style="padding:10px 12px; text-align:right; font-size:13px;">Amount</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr style="background:#f9f9f9;">
+        <td style="padding:10px 12px; font-weight:600; font-size:13px;">${procedure}</td>
+        <td style="padding:10px 12px; text-align:center; font-size:13px;">1</td>
+        <td style="padding:10px 12px; text-align:right; font-size:13px;">PKR ${costStr}</td>
+        <td style="padding:10px 12px; text-align:right; font-size:13px;">PKR ${costStr}</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div style="display:flex; justify-content:flex-end; margin-bottom:24px;">
+    <div style="text-align:right; min-width:200px;">
+      <div style="display:flex; justify-content:space-between; padding:4px 0; font-size:13px;">
+        <span style="color:#555; margin-right:40px;">Total:</span>
+        <span style="font-weight:600;">PKR ${costStr}</span>
+      </div>
+      <div style="display:flex; justify-content:space-between; padding:4px 0; font-size:13px;">
+        <span style="color:#555; margin-right:40px;">Paid:</span>
+        <span style="font-weight:600; color:#2e7d32;">PKR ${paidStr}</span>
+      </div>
+      <div style="display:flex; justify-content:space-between; padding:4px 0; font-size:13px; ${dueTotalsRowStyle}">
+        <span style="margin-right:40px;">Due:</span>
+        <span style="font-weight:700;">PKR ${dueStr}</span>
+      </div>
+    </div>
+  </div>
+
+  <hr style="border:none; border-top:1px solid #ddd; margin-bottom:12px;">
+  <div style="font-size:12px; color:#666;">
+    <div>Phone: +923211507943</div>
+    <div>Email: faseehdentalclinic@gmail.com</div>
+    <div>Location: Shop 2, L-11 Block-17, Gulshan-e-Iqbal, Karachi</div>
+  </div>
+</div>`;
 }
 
-function openCustomerInvoiceCopyModal(inv, paid, due) {
+function openCustomerCopyModal(inv, paid, due) {
+  const invoiceHtml = buildCustomerCopyInvoiceHtml(inv, paid, due);
   const overlay = document.createElement("div");
   overlay.className = "invoice-copy-overlay";
   overlay.innerHTML = `
-    <div class="invoice-copy-modal" role="dialog" aria-labelledby="invoiceCopyHeading">
+    <div class="invoice-copy-modal" role="dialog" aria-label="Customer copy invoice preview">
       <button type="button" class="invoice-copy-x" aria-label="Close">&times;</button>
-      <div id="invoiceCopyHeading" class="invoice-copy-modal-body">${buildInvoiceModalPreviewInnerHTML(inv, paid, due)}</div>
+      <div class="invoice-copy-modal-body">${invoiceHtml}</div>
       <div class="invoice-copy-modal-actions">
         <button type="button" class="btn invoice-copy-btn-pdf">Open PDF</button>
         <button type="button" class="btn invoice-copy-btn-wa">Send via WhatsApp</button>
@@ -191,15 +196,71 @@ function openCustomerInvoiceCopyModal(inv, paid, due) {
   document.body.appendChild(overlay);
 
   const close = () => overlay.remove();
-
   overlay.querySelector(".invoice-copy-x").onclick = close;
   overlay.addEventListener("click", (e) => {
     if (e.target === overlay) close();
   });
-
   overlay.querySelector(".invoice-copy-btn-pdf").onclick = () => runInvoiceCustomerPdfPrint(inv, paid, due);
+  overlay.querySelector(".invoice-copy-btn-wa").onclick = (e) =>
+    sendCustomerInvoiceWhatsApp(inv, paid, due, e.currentTarget);
+}
 
-  overlay.querySelector(".invoice-copy-btn-wa").onclick = () => sendCustomerInvoiceWhatsApp(inv, paid, due);
+async function sendCustomerInvoiceWhatsApp(_inv, _paid, _due, triggerBtn) {
+  const pt = currentPatient || {};
+  const name = patientDisplayName(pt);
+  const rawPhone = pt.phone ?? pt.Contact ?? "";
+  const digits = waDigitsFromPakistanPhone(rawPhone);
+  if (!digits) {
+    showToast("No phone number on file for this patient", "error");
+    return;
+  }
+  const invoiceEl = document.querySelector(".invoice-copy-modal-body #invoice-print-area");
+  if (!invoiceEl) {
+    showToast("Invoice preview is not available", "error");
+    return;
+  }
+  if (typeof window.html2canvas !== "function") {
+    showToast("Screenshot library not loaded", "error");
+    return;
+  }
+
+  const btn = triggerBtn || null;
+  const originalText = btn ? btn.textContent : "";
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = "Preparing...";
+  }
+
+  try {
+    const canvas = await window.html2canvas(invoiceEl, {
+      backgroundColor: "#ffffff",
+      scale: 2,
+      useCORS: true
+    });
+    const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
+    if (!blob) throw new Error("PNG generation failed");
+
+    const safeName = name.replace(/[^\w\s-]/g, "").trim().replace(/\s+/g, "_") || "Patient";
+    const href = URL.createObjectURL(blob);
+    const dl = document.createElement("a");
+    dl.href = href;
+    dl.download = `Invoice-${safeName}.png`;
+    document.body.appendChild(dl);
+    dl.click();
+    dl.remove();
+    URL.revokeObjectURL(href);
+
+    const msg = whatsappInvoiceMessage(name);
+    const url = `https://wa.me/${digits}?text=${encodeURIComponent(msg)}`;
+    setTimeout(() => window.open(url, "_blank", "noopener,noreferrer"), 800);
+  } catch (_) {
+    showToast("Could not prepare invoice image", "error");
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = originalText || "Send via WhatsApp";
+    }
+  }
 }
 
 function ensureSavingPeekEl() {
@@ -662,8 +723,7 @@ function paintBillingInvoiceCards() {
       };
     }
     const customerCopyBtn = card.querySelector(".billing-customer-copy");
-    if (customerCopyBtn && synced)
-      customerCopyBtn.onclick = () => openCustomerInvoiceCopyModal(inv, paid, due);
+    if (customerCopyBtn && synced) customerCopyBtn.onclick = () => openCustomerCopyModal(inv, paid, due);
     list.appendChild(card);
   });
 }
