@@ -64,6 +64,8 @@ function buildPatientInvoiceMarkup(inv, paid, due) {
   const mr = escapeHtml(String(pt.external_id ?? pt["Case No."] ?? pt.id ?? "").trim() || "—");
   const phoneRaw = String(pt.phone ?? pt.Contact ?? "").trim();
   const phone = phoneRaw ? escapeHtml(phoneRaw) : "—";
+  const genderRaw = String(pt.gender ?? pt.Gender ?? "").trim();
+  const gender = genderRaw ? escapeHtml(genderRaw) : "—";
   const dateStr = escapeHtml(displayDateTs(inv.created_at));
   const invId = escapeHtml(String(inv.id ?? "—"));
   const procedure = escapeHtml(String(inv.procedure ?? "").trim() || "—");
@@ -73,28 +75,50 @@ function buildPatientInvoiceMarkup(inv, paid, due) {
   const costStr = escapeHtml(pkMoney(totalCost));
   const paidStr = escapeHtml(pkMoney(paidN));
   const dueStr = escapeHtml(pkMoney(dueN));
-  const dueRow =
+  const dueBar =
     dueN > 1e-9
-      ? `<tr class="inv-doc-row-due"><td>Balance Due</td><td class="inv-doc-num">${dueStr}</td></tr>`
-      : "";
+      ? `<div class="inv-doc-balance-bar"><span class="inv-doc-balance-label">Balance Due:</span><span class="inv-doc-balance-value">${dueStr}</span></div>`
+      : `<div class="inv-doc-balance-bar inv-doc-balance-paid"><span class="inv-doc-balance-label">Status:</span><span class="inv-doc-balance-value">Paid in Full</span></div>`;
   const dueLineClass = dueN > 1e-9 ? " inv-doc-total-due" : "";
   return `
     <div class="inv-doc-root">
       <header class="inv-doc-top">
-        <span class="inv-doc-clinic">Faseeh Dental Clinic</span>
-        <span class="inv-doc-title">INVOICE</span>
+        <div class="inv-doc-logo">
+          <div class="inv-doc-logo-main">FASEEH</div>
+          <div class="inv-doc-logo-sub">DENTAL CLINIC</div>
+        </div>
+        <div class="inv-doc-head-right">
+          <div class="inv-doc-title">INVOICE</div>
+          <div class="inv-doc-number"># ${invId}</div>
+        </div>
       </header>
       <div class="inv-doc-teal-line" aria-hidden="true"></div>
-      <div class="inv-doc-meta-row">
-        <div class="inv-doc-meta-left">Patient: ${name} <span class="inv-doc-sep">|</span> MR#: ${mr} <span class="inv-doc-sep">|</span> Phone: ${phone}</div>
-        <div class="inv-doc-meta-right">Date: ${dateStr} <span class="inv-doc-sep">|</span> Invoice #: ${invId}</div>
+      <div class="inv-doc-second-row">
+        <div class="inv-doc-second-left">
+          <div class="inv-doc-doctor">Dr. Faseeh Ur Rehman</div>
+          <div class="inv-doc-doctor-sub">Dentist</div>
+          <div class="inv-doc-doctor-sub">BDS | RDS</div>
+        </div>
+        <div class="inv-doc-second-right"><span class="inv-doc-date-label">Date:</span> <span>${dateStr}</span></div>
       </div>
+      ${dueBar}
+      <section class="inv-doc-patient-info">
+        <div class="inv-doc-section-title">Patient Information:</div>
+        <div class="inv-doc-patient-name">${name}</div>
+        <div class="inv-doc-patient-meta">MR#: ${mr}</div>
+        <div class="inv-doc-patient-meta">Phone: ${phone}</div>
+        <div class="inv-doc-patient-meta">Gender: ${gender}</div>
+      </section>
       <div class="inv-doc-divider"></div>
       <table class="inv-doc-table">
-        <thead><tr><th scope="col">Description</th><th scope="col">Amount</th></tr></thead>
+        <thead><tr><th scope="col">Procedure</th><th scope="col">Quantity</th><th scope="col">Rate</th><th scope="col">Amount</th></tr></thead>
         <tbody>
-          <tr><td>${procedure}</td><td class="inv-doc-num">${costStr}</td></tr>
-          ${dueRow}
+          <tr>
+            <td>${procedure}</td>
+            <td class="inv-doc-center">1</td>
+            <td class="inv-doc-num">${costStr}</td>
+            <td class="inv-doc-num">${costStr}</td>
+          </tr>
         </tbody>
       </table>
       <div class="inv-doc-totals">
@@ -103,7 +127,11 @@ function buildPatientInvoiceMarkup(inv, paid, due) {
         <div class="inv-doc-total-line${dueLineClass}">Due: ${dueStr}</div>
       </div>
       <div class="inv-doc-divider"></div>
-      <footer class="inv-doc-foot">Thank you for choosing Faseeh Dental Clinic</footer>
+      <footer class="inv-doc-foot">
+        <div>Phone: +923211507943</div>
+        <div>Email: faseehdentalclinic@gmail.com</div>
+        <div>Location: Shop 2, L-11 Block-17, Gulshan-e-Iqbal, Karachi</div>
+      </footer>
     </div>`;
 }
 
@@ -597,13 +625,13 @@ function paintBillingInvoiceCards() {
       : `<p class="patientSmall" style="margin-bottom:8px;">Saving invoice…</p>`;
     card.innerHTML = `
       <div class="pane-head" style="margin-bottom:8px;"><b>${escapeHtml(inv.procedure || "")}</b>${synced ? statusBadge(inv.status) : ""}<span class="patientSmall">${displayDateTs(inv.created_at)}</span></div>${notesHtml}
-      <div style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:8px;font-size:0.875rem;">
-        <span>Total: ${Number(inv.cost || 0).toLocaleString()}</span><span>Lab: ${Number(inv.lab_cost || 0).toLocaleString()}</span>
+      <div style="display:flex;flex-wrap:wrap;gap:8px 10px;margin-bottom:8px;font-size:12px;">
+        <span>Total: ${Number(inv.cost || 0).toLocaleString()}</span>
         <span>Paid: ${paid.toLocaleString()}</span><span>Due: ${due.toLocaleString()}</span>
       </div>
       ${actionsHtml}
       <div class="table-scroll">
-        <table class="billing-table"><thead><tr><th>Date</th><th>Amount</th><th>Mode</th><th></th></tr></thead><tbody></tbody></table>
+        <table class="billing-table billing-payments-table"><thead><tr><th>Date</th><th>Amount</th><th>Mode</th><th></th></tr></thead><tbody></tbody></table>
       </div>`;
     const tb = card.querySelector("tbody");
     invPayments

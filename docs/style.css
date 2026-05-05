@@ -1140,7 +1140,7 @@ body {
 .invoice-copy-modal {
   position: relative;
   width: 100%;
-  max-width: 680px;
+  max-width: 650px;
   max-height: min(92vh, 900px);
   display: flex;
   flex-direction: column;
@@ -1180,7 +1180,7 @@ body {
 .invoice-copy-preview-shell {
   box-sizing: border-box;
   width: 100%;
-  max-width: 600px;
+  max-width: 650px;
   margin: 0 auto;
   background: #fff;
   color: #111;
@@ -1196,7 +1196,7 @@ body {
 .inv-doc-root {
   box-sizing: border-box;
   width: 100%;
-  max-width: 600px;
+  max-width: 650px;
   margin: 0 auto;
   background: #fff;
   color: #111;
@@ -1207,57 +1207,124 @@ body {
 
 .inv-doc-top {
   display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
+  align-items: flex-start;
   justify-content: space-between;
-  gap: 12px 20px;
+  gap: 12px 24px;
   margin-bottom: 14px;
 }
 
-.inv-doc-clinic {
-  font-size: 1.45rem;
+.inv-doc-logo-main {
+  font-size: 2rem;
   font-weight: 800;
   color: #009688;
-  letter-spacing: -0.02em;
+  line-height: 1;
+  letter-spacing: 0.03em;
+}
+
+.inv-doc-logo-sub {
+  margin-top: 2px;
+  color: #6b7280;
+  font-size: 0.86rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+}
+
+.inv-doc-head-right {
+  text-align: right;
 }
 
 .inv-doc-title {
-  font-size: 1.45rem;
+  font-size: 2.2rem;
   font-weight: 800;
-  color: #1f2937;
-  letter-spacing: 0.06em;
+  color: #374151;
+  letter-spacing: 0.03em;
+  line-height: 1;
+}
+
+.inv-doc-number {
+  margin-top: 4px;
+  color: #4b5563;
+  font-weight: 600;
+  font-size: 0.96rem;
 }
 
 .inv-doc-teal-line {
   height: 2px;
   width: 100%;
   background: #009688;
-  margin: 0 0 20px;
+  margin: 0 0 18px;
   border-radius: 1px;
 }
 
-.inv-doc-meta-row {
+.inv-doc-second-row {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 16px 24px;
+  gap: 12px 24px;
   margin-bottom: 18px;
-  font-size: 0.875rem;
   color: #374151;
 }
 
-.inv-doc-meta-left,
-.inv-doc-meta-right {
-  word-break: break-word;
+.inv-doc-second-left {
+  line-height: 1.35;
 }
 
-.inv-doc-meta-right {
+.inv-doc-doctor {
+  font-weight: 700;
+  font-size: 0.95rem;
+  color: #111827;
+}
+
+.inv-doc-doctor-sub {
+  font-size: 0.84rem;
+  color: #6b7280;
+}
+
+.inv-doc-second-right {
   text-align: right;
+  font-size: 0.92rem;
+  align-self: start;
 }
 
-.inv-doc-sep {
-  color: #d1d5db;
-  margin: 0 0.2em;
-  font-weight: 400;
+.inv-doc-date-label {
+  font-weight: 700;
+  color: #111827;
+}
+
+.inv-doc-balance-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin: 0 0 18px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: #edf1f4;
+  color: #111827;
+  font-weight: 700;
+}
+
+.inv-doc-balance-paid {
+  color: #15803d;
+}
+
+.inv-doc-patient-info {
+  margin-bottom: 18px;
+}
+
+.inv-doc-section-title {
+  font-size: 0.78rem;
+  color: #6b7280;
+  margin-bottom: 4px;
+}
+
+.inv-doc-patient-name {
+  font-size: 1rem;
+  font-weight: 700;
+  color: #111827;
+}
+
+.inv-doc-patient-meta {
+  font-size: 0.9rem;
+  color: #374151;
 }
 
 .inv-doc-divider {
@@ -1275,19 +1342,26 @@ body {
 }
 
 .inv-doc-table thead th {
-  background: #1f2937;
+  background: #2d3748;
   color: #fff;
   font-weight: 600;
   text-align: left;
-  padding: 12px 14px;
+  padding: 10px 12px;
 }
 
-.inv-doc-table thead th:last-child {
+.inv-doc-table thead th:nth-child(2) {
+  width: 88px;
+  text-align: center;
+}
+
+.inv-doc-table thead th:nth-child(3),
+.inv-doc-table thead th:nth-child(4) {
+  width: 128px;
   text-align: right;
 }
 
 .inv-doc-table tbody td {
-  padding: 12px 14px;
+  padding: 10px 12px;
   border: 1px solid #e5e7eb;
   vertical-align: top;
 }
@@ -1306,9 +1380,8 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
-.inv-doc-row-due td {
-  color: var(--danger, #dc2626);
-  font-weight: 700;
+.inv-doc-center {
+  text-align: center;
 }
 
 .inv-doc-totals {
@@ -1327,16 +1400,17 @@ body {
 .inv-doc-foot {
   margin: 0;
   text-align: center;
-  font-size: 0.82rem;
+  font-size: 0.84rem;
   color: #6b7280;
+  line-height: 1.6;
 }
 
 @media (max-width: 520px) {
-  .inv-doc-meta-row {
+  .inv-doc-second-row {
     grid-template-columns: 1fr;
   }
 
-  .inv-doc-meta-right {
+  .inv-doc-second-right {
     text-align: left;
   }
 }
@@ -1378,9 +1452,9 @@ body {
   position: fixed;
   left: -10000px;
   top: 0;
-  width: 600px;
+  width: 100%;
   max-width: 100%;
-  margin: 0 auto;
+  margin: 0;
   padding: 40px 36px;
   background: #fff;
   color: #111;
@@ -1412,8 +1486,8 @@ body {
     left: auto !important;
     top: auto !important;
     width: 100% !important;
-    max-width: 600px !important;
-    margin: 0 auto !important;
+    max-width: none !important;
+    margin: 0 !important;
     padding: 40px !important;
     box-sizing: border-box !important;
     background: #fff !important;
@@ -1435,7 +1509,7 @@ body {
     -webkit-print-color-adjust: exact;
   }
 
-  body.cp-invoice-printing #invoice-print-area .inv-doc-clinic {
+  body.cp-invoice-printing #invoice-print-area .inv-doc-logo-main {
     color: #009688 !important;
     print-color-adjust: exact;
     -webkit-print-color-adjust: exact;
@@ -1464,4 +1538,32 @@ body {
   body.cp-invoice-printing #invoice-print-area .inv-doc-foot {
     color: #6b7280 !important;
   }
+}
+
+.billing-payments-table {
+  table-layout: fixed;
+  width: 100%;
+  font-size: 12px;
+}
+
+.billing-payments-table th,
+.billing-payments-table td {
+  padding: 6px 8px;
+}
+
+.billing-payments-table th:nth-child(1),
+.billing-payments-table td:nth-child(1) {
+  width: 110px;
+}
+
+.billing-payments-table th:nth-child(2),
+.billing-payments-table td:nth-child(2) {
+  width: 90px;
+  text-align: right;
+}
+
+.billing-payments-table th:nth-child(4),
+.billing-payments-table td:nth-child(4) {
+  width: 46px;
+  text-align: center;
 }
