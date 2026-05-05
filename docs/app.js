@@ -1012,8 +1012,7 @@ function openEditInvoiceModal(inv, onSave) {
     <h3>Edit Invoice #${inv.id}</h3>
     <label>Date</label><input id="eDate" type="date" value="${localYMD(new Date(inv.created_at))}">
     <label>Procedure</label>
-    <input id="eProcedure" type="text" class="billing-select" list="procListEdit" placeholder="Select or type procedure..." autocomplete="off" value="${escapeHtml(String(inv.procedure || ""))}">
-    <datalist id="procListEdit">${billingProcedureOptionTags()}</datalist>
+    <div id="eProcField"></div>
     <label>Total Cost</label><input id="eCost" type="number" value="${Number(inv.cost || 0)}">
     <label>Lab Cost</label><input id="eLab" type="number" value="${Number(inv.lab_cost || 0)}">
     <label>Notes</label>
@@ -1023,11 +1022,27 @@ function openEditInvoiceModal(inv, onSave) {
       <button type="button" id="eSave" class="btn btn-primary">Save</button>
     </div>
   </div>`;
+  const procDatalist = `
+<input id="eProc" type="text" list="eProcList" value="${escapeHtml(String(inv.procedure || ""))}" autocomplete="off" style="width:100%; padding:8px; border:1px solid #ccd; border-radius:8px; font-size:14px; box-sizing:border-box;">
+<datalist id="eProcList">
+  <option value="RCT">
+  <option value="Scaling">
+  <option value="Extraction">
+  <option value="Diagnosis">
+  <option value="Filling">
+  <option value="Crown">
+  <option value="Denture">
+  <option value="Bridge">
+  <option value="Implant">
+  <option value="Whitening">
+  <option value="Other">
+</datalist>`;
+  ov.querySelector("#eProcField").innerHTML = procDatalist;
   document.body.appendChild(ov);
   ov.querySelector("#eNotes").value = inv.notes ?? "";
   ov.querySelector("#eCancel").onclick = () => ov.remove();
   ov.querySelector("#eSave").onclick = async () => {
-    const procedure = readProcedureChoice(ov.querySelector("#eProcedure"));
+    const procedure = readProcedureChoice(ov.querySelector("#eProc"));
     if (!procedure) return showToast("Procedure is required", "error");
     const notes = (ov.querySelector("#eNotes").value || "").trim();
     await window.api.invoices.update({
