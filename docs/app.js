@@ -109,12 +109,23 @@ function buildCustomerCopyInvoiceHtml(inv, paid, due) {
       </tr>`
           )
           .join("")
-      : `<tr style="background:#f9f9f9;">
-      <td style="padding:10px 12px;font-weight:600;font-size:13px;">${inv.procedure}</td>
-      <td style="padding:10px 12px;text-align:center;font-size:13px;">1</td>
-      <td style="padding:10px 12px;text-align:right;font-size:13px;">PKR ${Number(inv.cost).toLocaleString()}</td>
-      <td style="padding:10px 12px;text-align:right;font-size:13px;">PKR ${Number(inv.cost).toLocaleString()}</td>
-    </tr>`;
+      : (() => {
+          const proc = String(inv.procedure ?? "").trim() || "—";
+          const total = Number(inv.cost || 0);
+          const row = (name, amt) => `
+      <tr style="background:#f9f9f9;">
+        <td style="padding:10px 12px;font-weight:600;font-size:13px;">${name}</td>
+        <td style="padding:10px 12px;text-align:center;font-size:13px;">1</td>
+        <td style="padding:10px 12px;text-align:right;font-size:13px;">PKR ${Number(amt).toLocaleString()}</td>
+        <td style="padding:10px 12px;text-align:right;font-size:13px;">PKR ${Number(amt).toLocaleString()}</td>
+      </tr>`;
+          if (proc.includes(",")) {
+            const names = proc.split(",").map((s) => s.trim()).filter(Boolean);
+            const each = total / (names.length || 1);
+            return names.map((n) => row(n, each)).join("");
+          }
+          return row(proc, total);
+        })();
   return `
 <div id="invoice-print-area" style="font-family: Arial, sans-serif; background: white; padding: 40px; max-width: 700px; margin: 0 auto; color: #222;">
   <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:20px;">
@@ -380,13 +391,22 @@ function buildCustomerCopyProcedureRows(inv) {
       )
       .join("");
   } else {
-    tableRows = `
+    const proc = String(inv.procedure ?? "").trim() || "—";
+    const total = Number(inv.cost || 0);
+    const row = (name, amt) => `
     <tr style="background:#f9f9f9;">
-      <td style="padding:10px 12px; font-weight:600; font-size:13px;">${escapeHtml(String(inv.procedure ?? "").trim() || "—")}</td>
+      <td style="padding:10px 12px; font-weight:600; font-size:13px;">${escapeHtml(name)}</td>
       <td style="padding:10px 12px; text-align:center; font-size:13px;">1</td>
-      <td style="padding:10px 12px; text-align:right; font-size:13px;">PKR ${Number(inv.cost).toLocaleString()}</td>
-      <td style="padding:10px 12px; text-align:right; font-size:13px;">PKR ${Number(inv.cost).toLocaleString()}</td>
+      <td style="padding:10px 12px; text-align:right; font-size:13px;">PKR ${Number(amt).toLocaleString()}</td>
+      <td style="padding:10px 12px; text-align:right; font-size:13px;">PKR ${Number(amt).toLocaleString()}</td>
     </tr>`;
+    if (proc.includes(",")) {
+      const names = proc.split(",").map((s) => s.trim()).filter(Boolean);
+      const each = total / (names.length || 1);
+      tableRows = names.map((n) => row(n, each)).join("");
+    } else {
+      tableRows = row(proc, total);
+    }
   }
   return tableRows;
 }
