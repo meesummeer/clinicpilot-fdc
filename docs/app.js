@@ -431,64 +431,6 @@ function attachLineItemsEditor(hostEl, options = {}) {
   return { collectItems, updateTotal, addRow };
 }
 
-function openMultiServiceInvoiceModal(pid) {
-  const d = localYMD(new Date());
-  const listId = `msProcList-${Date.now()}`;
-  const ov = document.createElement("div");
-  ov.className = "modal";
-  ov.innerHTML = `<div class="modal-content modal-content--billing" style="max-width:560px;margin:0 auto;">
-    <h3>Multi-Service Invoice</h3>
-    <label>Date</label>
-    <input id="msDate" type="date" value="${d}">
-    <label>Notes</label>
-    <textarea id="msNotes" class="billing-notes" placeholder="Treatment notes, observations..." rows="3"></textarea>
-    <label style="margin-top:8px;">Services</label>
-    <datalist id="${listId}">${billingProcedureOptionTags()}</datalist>
-    <div data-line-items-editor>
-      <div data-line-items-rows></div>
-      <button type="button" class="btn btn-secondary btn-small" data-add-service style="margin:4px 0 12px;">Add Service</button>
-      <div data-line-items-total style="font-weight:700;font-size:15px;margin-bottom:12px;">Total: PKR 0</div>
-    </div>
-    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px;">
-      <button type="button" id="msCancel" class="btn btn-secondary">Cancel</button>
-      <button type="button" id="msSave" class="btn btn-primary">Save</button>
-    </div>
-  </div>`;
-  document.body.appendChild(ov);
-  const editorHost = ov.querySelector("[data-line-items-editor]");
-  const editor = attachLineItemsEditor(editorHost, { listId });
-
-  ov.querySelector("#msCancel").onclick = () => ov.remove();
-  ov.querySelector("#msSave").onclick = async () => {
-    const lineItems = editor.collectItems();
-    if (!lineItems.length) {
-      return showToast("Add at least one service with procedure and cost", "error");
-    }
-    const total = lineItems.reduce((s, i) => s + i.cost, 0);
-    const dateStr = ov.querySelector("#msDate").value || d;
-    const notes = (ov.querySelector("#msNotes").value || "").trim();
-    const procedure = lineItems.map((i) => i.name).join(", ");
-    showSavingPeek();
-    try {
-      await window.api.invoices.add({
-        patient_id: pid,
-        procedure,
-        cost: total,
-        lab_cost: 0,
-        created_at: new Date(`${dateStr}T12:00:00`).getTime(),
-        notes,
-        line_items: lineItems
-      });
-      showToast("Multi-service invoice added");
-      ov.remove();
-      await renderPatientBilling();
-    } catch (e) {
-      showToast(e.message || "Could not save invoice", "error");
-    } finally {
-      hideSavingPeek();
-    }
-  };
-}
 
 const THEME_MAP = { cyan: "#009688", purple: "#7c3aed", blue: "#1d4ed8" };
 
@@ -871,14 +813,19 @@ async function renderPatientBilling() {
           <input id="bCost" type="number" placeholder="Total Cost" style="max-width:120px;">
           <input id="bLab" type="number" placeholder="Lab Cost" style="max-width:120px;">
           <button type="button" id="addInvoiceBtn" class="btn btn-primary">+ Add Invoice</button>
-          <button type="button" id="addMultiServiceBtn" class="btn btn-secondary">+ Multi-Service</button>
         </div>
         <textarea id="bNotes" class="billing-notes" placeholder="Treatment notes, observations..." rows="3"></textarea>
       </div>
       <div id="billingList"></div>
     </div>`;
 
-  $("#addMultiServiceBtn").onclick = () => openMultiServiceInvoiceModal(pid);
+  const addInvBtn = $("#addInvoiceBtn");
+  const multiBtn = document.createElement("button");
+  multiBtn.className = "btn";
+  multiBtn.textContent = "+ Multi-Service";
+  multiBtn.style.marginLeft = "8px";
+  multiBtn.onclick = () => openMultiServiceModal(pid, renderPatientBilling);
+  addInvBtn.insertAdjacentElement("afterend", multiBtn);
 
   $("#addInvoiceBtn").onclick = async () => {
     const procedure = readProcedureChoice($("#bProcedure"));
@@ -1604,3 +1551,116 @@ window.addEventListener("DOMContentLoaded", async () => {
   await Promise.all([drawCalendar(), renderClinicBilling()]);
   setActiveNav("home");
 });
+
+function openMultiServiceModal(pid, onSave) {
+  const today = new Date().toISOString().split("T")[0];
+  const procedures = [
+    "RCT",
+    "Scaling",
+    "Extraction",
+    "Diagnosis",
+    "Filling",
+    "Crown",
+    "Denture",
+    "Bridge",
+    "Implant",
+    "Whitening",
+    "Other"
+  ];
+
+  const ov = document.createElement("div");
+  ov.className = "modal";
+  ov.style.zIndex = "10000";
+
+  ov.innerHTML = `
+    <div class="modal-content" style="width:560px; max-width:95vw; max-height:85vh; overflow-y:auto;">
+      <h3 style="margin:0 0 16px 0;">Multi-Service Invoice</h3>
+      <label>Date</label>
+      <input id="msDate" type="date" value="${today}" style="width:100%;padding:8px;border:1px solid #ccd;border-radius:8px;margin-bottom:12px;">
+      <label>Services</label>
+      <div id="msLineItems" style="margin-bottom:8px;"></div>
+      <button id="msAddRow" class="btn ghost small" style="margin-bottom:12px;">+ Add Service</button>
+      <div id="msTotal" style="text-align:right;font-weight:700;font-size:15px;margin-bottom:12px;">Total: PKR 0</div>
+      <label>Notes</label>
+      <textarea id="msNotes" style="width:100%;padding:8px;border:1px solid #ccd;border-radius:8px;min-height:60px;margin-bottom:16px;" placeholder="Treatment notes..."></textarea>
+      <div style="display:flex;gap:8px;justify-content:flex-end;">
+        <button id="msCancel" class="btn">Cancel</button>
+        <button id="msSave" class="btn primary">Save Invoice</button>
+      </div>
+    </div>`;
+
+  document.body.appendChild(ov);
+
+  const lineItemsDiv = ov.querySelector("#msLineItems");
+  const totalDiv = ov.querySelector("#msTotal");
+
+  function addRow(name = "", cost = "") {
+    const row = document.createElement("div");
+    row.style.cssText = "display:flex;gap:8px;margin-bottom:8px;align-items:center;";
+    row.innerHTML = `
+      <input type="text" list="msProcList" placeholder="Procedure" value="${name}" style="flex:2;padding:8px;border:1px solid #ccd;border-radius:8px;">
+      <datalist id="msProcList">${procedures.map((p) => `<option value="${p}">`).join("")}</datalist>
+      <input type="number" placeholder="Cost (PKR)" value="${cost}" style="flex:1;padding:8px;border:1px solid #ccd;border-radius:8px;" min="0">
+      <button class="btn danger small" style="padding:6px 10px;">×</button>`;
+    row.querySelector("button").onclick = () => {
+      if (lineItemsDiv.children.length > 1) {
+        row.remove();
+        updateTotal();
+      }
+    };
+    row.querySelectorAll("input").forEach((i) => i.addEventListener("input", updateTotal));
+    lineItemsDiv.appendChild(row);
+    updateTotal();
+  }
+
+  function updateTotal() {
+    let total = 0;
+    lineItemsDiv.querySelectorAll("div").forEach((row) => {
+      const inputs = row.querySelectorAll("input");
+      total += Number(inputs[1]?.value || 0);
+    });
+    totalDiv.textContent = "Total: PKR " + total.toLocaleString();
+    return total;
+  }
+
+  function getLineItems() {
+    const items = [];
+    lineItemsDiv.querySelectorAll("div").forEach((row) => {
+      const inputs = row.querySelectorAll("input");
+      const name = inputs[0]?.value?.trim();
+      const cost = Number(inputs[1]?.value || 0);
+      if (name && cost > 0) items.push({ name, cost });
+    });
+    return items;
+  }
+
+  addRow();
+  addRow();
+
+  ov.querySelector("#msAddRow").onclick = () => addRow();
+  ov.querySelector("#msCancel").onclick = () => ov.remove();
+  ov.querySelector("#msSave").onclick = async () => {
+    const items = getLineItems();
+    if (!items.length) {
+      alert("Add at least one service with a cost.");
+      return;
+    }
+    const total = items.reduce((s, i) => s + i.cost, 0);
+    const dateStr = ov.querySelector("#msDate").value;
+    const notes = ov.querySelector("#msNotes").value;
+    const btn = ov.querySelector("#msSave");
+    btn.disabled = true;
+    btn.textContent = "Saving...";
+    await window.api.invoices.add({
+      patient_id: pid,
+      procedure: items.map((i) => i.name).join(", "),
+      cost: total,
+      lab_cost: 0,
+      notes,
+      created_at: new Date(dateStr + "T00:00:00").getTime(),
+      line_items: items
+    });
+    ov.remove();
+    if (onSave) onSave();
+  };
+}
