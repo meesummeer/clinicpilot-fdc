@@ -96,7 +96,25 @@ function buildCustomerCopyInvoiceHtml(inv, paid, due) {
   const dueColor = dueN > 0 ? "#c62828" : "#2e7d32";
   const dueDisplay = dueN > 0 ? `PKR ${dueStr}` : "Paid in Full";
   const dueTotalsRowStyle = dueN > 0 ? "color:#c62828;" : "";
-  const procedureRowsHtml = buildCustomerCopyProcedureRows(inv);
+  const tableBodyRows =
+    inv.line_items && inv.line_items.length > 0
+      ? inv.line_items
+          .map(
+            (item) => `
+      <tr style="background:#f9f9f9;">
+        <td style="padding:10px 12px;font-weight:600;font-size:13px;">${item.name}</td>
+        <td style="padding:10px 12px;text-align:center;font-size:13px;">1</td>
+        <td style="padding:10px 12px;text-align:right;font-size:13px;">PKR ${Number(item.cost).toLocaleString()}</td>
+        <td style="padding:10px 12px;text-align:right;font-size:13px;">PKR ${Number(item.cost).toLocaleString()}</td>
+      </tr>`
+          )
+          .join("")
+      : `<tr style="background:#f9f9f9;">
+      <td style="padding:10px 12px;font-weight:600;font-size:13px;">${inv.procedure}</td>
+      <td style="padding:10px 12px;text-align:center;font-size:13px;">1</td>
+      <td style="padding:10px 12px;text-align:right;font-size:13px;">PKR ${Number(inv.cost).toLocaleString()}</td>
+      <td style="padding:10px 12px;text-align:right;font-size:13px;">PKR ${Number(inv.cost).toLocaleString()}</td>
+    </tr>`;
   return `
 <div id="invoice-print-area" style="font-family: Arial, sans-serif; background: white; padding: 40px; max-width: 700px; margin: 0 auto; color: #222;">
   <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:20px;">
@@ -146,7 +164,7 @@ function buildCustomerCopyInvoiceHtml(inv, paid, due) {
       </tr>
     </thead>
     <tbody>
-      ${procedureRowsHtml}
+      ${tableBodyRows}
     </tbody>
   </table>
 
