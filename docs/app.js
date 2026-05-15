@@ -338,40 +338,39 @@ function normalizeInvoiceLineItems(inv) {
   return items.length ? items : null;
 }
 
-function formatLineItemsPillsHtml(inv) {
-  const items = normalizeInvoiceLineItems(inv);
-  if (!items) return "";
-  const parts = items.map(
-    (i) => `${escapeHtml(i.name)}: PKR ${Number(i.cost || 0).toLocaleString()}`
+function formatLineItemsCardHtml(inv) {
+  if (!inv.line_items || !inv.line_items.length) return "";
+  const lines = inv.line_items.map(
+    (item) =>
+      `• ${escapeHtml(String(item.name ?? ""))}: PKR ${Number(item.cost || 0).toLocaleString()}`
   );
-  return `<div style="margin:6px 0 8px;font-size:12px;line-height:1.5;color:#374151;">${parts.join(" | ")}</div>`;
+  return `<div style="margin:4px 0 8px;font-size:12px;line-height:1.6;color:#374151;">${lines.join("<br>")}</div>`;
 }
 
 function buildCustomerCopyProcedureRows(inv) {
-  const items = normalizeInvoiceLineItems(inv);
-  if (items) {
-    return items
-      .map((item, idx) => {
-        const name = escapeHtml(item.name || "—");
-        const itemCost = Number(item.cost || 0).toLocaleString();
-        const bg = idx % 2 === 0 ? "#f9f9f9" : "#ffffff";
-        return `<tr style="background:${bg};">
-        <td style="padding:10px 12px; font-weight:600; font-size:13px;">${name}</td>
-        <td style="padding:10px 12px; text-align:center; font-size:13px;">1</td>
-        <td style="padding:10px 12px; text-align:right; font-size:13px;">PKR ${itemCost}</td>
-        <td style="padding:10px 12px; text-align:right; font-size:13px;">PKR ${itemCost}</td>
-      </tr>`;
-      })
+  let tableRows;
+  if (inv.line_items && inv.line_items.length > 0) {
+    tableRows = inv.line_items
+      .map(
+        (item) => `
+    <tr style="background:#f9f9f9;">
+      <td style="padding:10px 12px; font-weight:600; font-size:13px;">${escapeHtml(String(item.name ?? ""))}</td>
+      <td style="padding:10px 12px; text-align:center; font-size:13px;">1</td>
+      <td style="padding:10px 12px; text-align:right; font-size:13px;">PKR ${Number(item.cost).toLocaleString()}</td>
+      <td style="padding:10px 12px; text-align:right; font-size:13px;">PKR ${Number(item.cost).toLocaleString()}</td>
+    </tr>`
+      )
       .join("");
+  } else {
+    tableRows = `
+    <tr style="background:#f9f9f9;">
+      <td style="padding:10px 12px; font-weight:600; font-size:13px;">${escapeHtml(String(inv.procedure ?? "").trim() || "—")}</td>
+      <td style="padding:10px 12px; text-align:center; font-size:13px;">1</td>
+      <td style="padding:10px 12px; text-align:right; font-size:13px;">PKR ${Number(inv.cost).toLocaleString()}</td>
+      <td style="padding:10px 12px; text-align:right; font-size:13px;">PKR ${Number(inv.cost).toLocaleString()}</td>
+    </tr>`;
   }
-  const procedure = escapeHtml(String(inv?.procedure ?? "").trim() || "—");
-  const costStr = Number(inv?.cost || 0).toLocaleString();
-  return `<tr style="background:#f9f9f9;">
-        <td style="padding:10px 12px; font-weight:600; font-size:13px;">${procedure}</td>
-        <td style="padding:10px 12px; text-align:center; font-size:13px;">1</td>
-        <td style="padding:10px 12px; text-align:right; font-size:13px;">PKR ${costStr}</td>
-        <td style="padding:10px 12px; text-align:right; font-size:13px;">PKR ${costStr}</td>
-      </tr>`;
+  return tableRows;
 }
 
 /** Wire multi-service line-item rows inside a modal host element. */
@@ -743,7 +742,11 @@ function paintBillingInvoiceCards() {
     const notesHtml = inv.notes
       ? `<p class="patientSmall invoice-notes-line" style="margin:6px 0 0;line-height:1.4">${escapeHtml(inv.notes)}</p>`
       : "";
-    const lineItemsPills = formatLineItemsPillsHtml(inv);
+    const lineItemsCard = formatLineItemsCardHtml(inv);
+    const invoiceTitle =
+      inv.line_items && inv.line_items.length > 0
+        ? "Multi-Service Invoice"
+        : escapeHtml(inv.procedure || "");
     const actionsHtml = synced
       ? `<div style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap;">
         <button type="button" class="btn btn-primary btn-small addPay">+ Payment</button>
@@ -753,7 +756,7 @@ function paintBillingInvoiceCards() {
       </div>`
       : `<p class="patientSmall" style="margin-bottom:8px;">Saving invoice…</p>`;
     card.innerHTML = `
-      <div class="pane-head" style="margin-bottom:8px;"><b>${escapeHtml(inv.procedure || "")}</b>${synced ? statusBadge(inv.status) : ""}<span class="patientSmall">${displayDateTs(inv.created_at)}</span></div>${lineItemsPills}${notesHtml}
+      <div class="pane-head" style="margin-bottom:8px;"><b>${invoiceTitle}</b>${synced ? statusBadge(inv.status) : ""}<span class="patientSmall">${displayDateTs(inv.created_at)}</span></div>${lineItemsCard}${notesHtml}
       <div style="display:flex;flex-wrap:wrap;gap:8px 10px;margin-bottom:8px;font-size:12px;">
         <span>Total: ${Number(inv.cost || 0).toLocaleString()}</span>
         <span>Paid: ${paid.toLocaleString()}</span><span>Due: ${due.toLocaleString()}</span>
