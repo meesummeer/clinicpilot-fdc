@@ -87,7 +87,6 @@ function buildCustomerCopyInvoiceHtml(inv, paid, due) {
   const phone = phoneRaw ? escapeHtml(phoneRaw) : "—";
   const genderRaw = String(pt.gender ?? pt.Gender ?? "").trim();
   const gender = genderRaw ? escapeHtml(genderRaw) : "—";
-  const procedure = escapeHtml(String(inv?.procedure ?? "").trim() || "—");
   const costN = Number(inv?.cost || 0);
   const paidN = Number(paid || 0);
   const dueN = Math.max(0, Number(due ?? 0));
@@ -97,6 +96,7 @@ function buildCustomerCopyInvoiceHtml(inv, paid, due) {
   const dueColor = dueN > 0 ? "#c62828" : "#2e7d32";
   const dueDisplay = dueN > 0 ? `PKR ${dueStr}` : "Paid in Full";
   const dueTotalsRowStyle = dueN > 0 ? "color:#c62828;" : "";
+  const procedureRowsHtml = buildCustomerCopyProcedureRows(inv);
   return `
 <div id="invoice-print-area" style="font-family: Arial, sans-serif; background: white; padding: 40px; max-width: 700px; margin: 0 auto; color: #222;">
   <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:20px;">
@@ -146,12 +146,7 @@ function buildCustomerCopyInvoiceHtml(inv, paid, due) {
       </tr>
     </thead>
     <tbody>
-      <tr style="background:#f9f9f9;">
-        <td style="padding:10px 12px; font-weight:600; font-size:13px;">${procedure}</td>
-        <td style="padding:10px 12px; text-align:center; font-size:13px;">1</td>
-        <td style="padding:10px 12px; text-align:right; font-size:13px;">PKR ${costStr}</td>
-        <td style="padding:10px 12px; text-align:right; font-size:13px;">PKR ${costStr}</td>
-      </tr>
+      ${procedureRowsHtml}
     </tbody>
   </table>
 
@@ -329,6 +324,170 @@ function billingProcedureOptionTags() {
 /** Selected procedure label from input/datalist (free-typed allowed). */
 function readProcedureChoice(inputEl) {
   return (inputEl?.value || "").trim();
+}
+
+function normalizeInvoiceLineItems(inv) {
+  const raw = inv?.line_items;
+  if (!Array.isArray(raw) || !raw.length) return null;
+  const items = raw
+    .map((i) => ({
+      name: String(i?.name ?? i?.procedure ?? "").trim(),
+      cost: Number(i?.cost ?? 0)
+    }))
+    .filter((i) => i.name || i.cost > 0);
+  return items.length ? items : null;
+}
+
+function formatLineItemsPillsHtml(inv) {
+  const items = normalizeInvoiceLineItems(inv);
+  if (!items) return "";
+  const parts = items.map(
+    (i) => `${escapeHtml(i.name)}: PKR ${Number(i.cost || 0).toLocaleString()}`
+  );
+  return `<div style="margin:6px 0 8px;font-size:12px;line-height:1.5;color:#374151;">${parts.join(" | ")}</div>`;
+}
+
+function buildCustomerCopyProcedureRows(inv) {
+  const items = normalizeInvoiceLineItems(inv);
+  if (items) {
+    return items
+      .map((item, idx) => {
+        const name = escapeHtml(item.name || "—");
+        const itemCost = Number(item.cost || 0).toLocaleString();
+        const bg = idx % 2 === 0 ? "#f9f9f9" : "#ffffff";
+        return `<tr style="background:${bg};">
+        <td style="padding:10px 12px; font-weight:600; font-size:13px;">${name}</td>
+        <td style="padding:10px 12px; text-align:center; font-size:13px;">1</td>
+        <td style="padding:10px 12px; text-align:right; font-size:13px;">PKR ${itemCost}</td>
+        <td style="padding:10px 12px; text-align:right; font-size:13px;">PKR ${itemCost}</td>
+      </tr>`;
+      })
+      .join("");
+  }
+  const procedure = escapeHtml(String(inv?.procedure ?? "").trim() || "—");
+  const costStr = Number(inv?.cost || 0).toLocaleString();
+  return `<tr style="background:#f9f9f9;">
+        <td style="padding:10px 12px; font-weight:600; font-size:13px;">${procedure}</td>
+        <td style="padding:10px 12px; text-align:center; font-size:13px;">1</td>
+        <td style="padding:10px 12px; text-align:right; font-size:13px;">PKR ${costStr}</td>
+        <td style="padding:10px 12px; text-align:right; font-size:13px;">PKR ${costStr}</td>
+      </tr>`;
+}
+
+/** Wire multi-service line-item rows inside a modal host element. */
+function attachLineItemsEditor(hostEl, options = {}) {
+  const {
+    initialItems = [
+      { name: "", cost: "" },
+      { name: "", cost: "" }
+    ],
+    listId = "msProcList",
+    onTotalChange
+  } = options;
+  const rowsWrap = hostEl.querySelector("[data-line-items-rows]");
+  const totalEl = hostEl.querySelector("[data-line-items-total]");
+  const addBtn = hostEl.querySelector("[data-add-service]");
+
+  const updateTotal = () => {
+    const total = [...rowsWrap.querySelectorAll(".ms-line-row")].reduce(
+      (s, row) => s + Number(row.querySelector(".ms-line-cost")?.value || 0),
+      0
+    );
+    if (totalEl) totalEl.textContent = `Total: PKR ${total.toLocaleString()}`;
+    onTotalChange?.(total);
+    return total;
+  };
+
+  const collectItems = () =>
+    [...rowsWrap.querySelectorAll(".ms-line-row")]
+      .map((row) => ({
+        name: (row.querySelector(".ms-line-proc")?.value || "").trim(),
+        cost: Number(row.querySelector(".ms-line-cost")?.value || 0)
+      }))
+      .filter((i) => i.name && i.cost > 0);
+
+  const addRow = (name = "", cost = "") => {
+    const row = document.createElement("div");
+    row.className = "ms-line-row";
+    row.style.cssText = "display:flex;gap:8px;margin-bottom:8px;align-items:center;";
+    const costVal = cost === "" || cost == null ? "" : String(cost);
+    row.innerHTML = `
+      <input type="text" class="ms-line-proc billing-select" list="${listId}" placeholder="Procedure" autocomplete="off" value="${escapeHtml(String(name))}" style="flex:1;min-width:0;">
+      <input type="number" class="ms-line-cost" placeholder="Cost" value="${escapeHtml(costVal)}" min="0" step="any" style="max-width:110px;">
+      <button type="button" class="btn btn-danger btn-small ms-line-remove" title="Remove">×</button>`;
+    row.querySelector(".ms-line-cost").addEventListener("input", updateTotal);
+    row.querySelector(".ms-line-remove").onclick = () => {
+      if (rowsWrap.querySelectorAll(".ms-line-row").length <= 1) return;
+      row.remove();
+      updateTotal();
+    };
+    rowsWrap.appendChild(row);
+    updateTotal();
+  };
+
+  initialItems.forEach((i) => addRow(i.name || "", i.cost ?? ""));
+  addBtn?.addEventListener("click", () => addRow());
+
+  return { collectItems, updateTotal, addRow };
+}
+
+function openMultiServiceInvoiceModal(pid) {
+  const d = localYMD(new Date());
+  const listId = `msProcList-${Date.now()}`;
+  const ov = document.createElement("div");
+  ov.className = "modal";
+  ov.innerHTML = `<div class="modal-content modal-content--billing" style="max-width:560px;margin:0 auto;">
+    <h3>Multi-Service Invoice</h3>
+    <label>Date</label>
+    <input id="msDate" type="date" value="${d}">
+    <label>Notes</label>
+    <textarea id="msNotes" class="billing-notes" placeholder="Treatment notes, observations..." rows="3"></textarea>
+    <label style="margin-top:8px;">Services</label>
+    <datalist id="${listId}">${billingProcedureOptionTags()}</datalist>
+    <div data-line-items-editor>
+      <div data-line-items-rows></div>
+      <button type="button" class="btn btn-secondary btn-small" data-add-service style="margin:4px 0 12px;">Add Service</button>
+      <div data-line-items-total style="font-weight:700;font-size:15px;margin-bottom:12px;">Total: PKR 0</div>
+    </div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px;">
+      <button type="button" id="msCancel" class="btn btn-secondary">Cancel</button>
+      <button type="button" id="msSave" class="btn btn-primary">Save</button>
+    </div>
+  </div>`;
+  document.body.appendChild(ov);
+  const editorHost = ov.querySelector("[data-line-items-editor]");
+  const editor = attachLineItemsEditor(editorHost, { listId });
+
+  ov.querySelector("#msCancel").onclick = () => ov.remove();
+  ov.querySelector("#msSave").onclick = async () => {
+    const lineItems = editor.collectItems();
+    if (!lineItems.length) {
+      return showToast("Add at least one service with procedure and cost", "error");
+    }
+    const total = lineItems.reduce((s, i) => s + i.cost, 0);
+    const dateStr = ov.querySelector("#msDate").value || d;
+    const notes = (ov.querySelector("#msNotes").value || "").trim();
+    const procedure = lineItems.map((i) => i.name).join(", ");
+    showSavingPeek();
+    try {
+      await window.api.invoices.add({
+        patient_id: pid,
+        procedure,
+        cost: total,
+        lab_cost: 0,
+        created_at: new Date(`${dateStr}T12:00:00`).getTime(),
+        notes,
+        line_items: lineItems
+      });
+      showToast("Multi-service invoice added");
+      ov.remove();
+      await renderPatientBilling();
+    } catch (e) {
+      showToast(e.message || "Could not save invoice", "error");
+    } finally {
+      hideSavingPeek();
+    }
+  };
 }
 
 const THEME_MAP = { cyan: "#009688", purple: "#7c3aed", blue: "#1d4ed8" };
@@ -642,6 +801,7 @@ function paintBillingInvoiceCards() {
     const notesHtml = inv.notes
       ? `<p class="patientSmall invoice-notes-line" style="margin:6px 0 0;line-height:1.4">${escapeHtml(inv.notes)}</p>`
       : "";
+    const lineItemsPills = formatLineItemsPillsHtml(inv);
     const actionsHtml = synced
       ? `<div style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap;">
         <button type="button" class="btn btn-primary btn-small addPay">+ Payment</button>
@@ -651,7 +811,7 @@ function paintBillingInvoiceCards() {
       </div>`
       : `<p class="patientSmall" style="margin-bottom:8px;">Saving invoice…</p>`;
     card.innerHTML = `
-      <div class="pane-head" style="margin-bottom:8px;"><b>${escapeHtml(inv.procedure || "")}</b>${synced ? statusBadge(inv.status) : ""}<span class="patientSmall">${displayDateTs(inv.created_at)}</span></div>${notesHtml}
+      <div class="pane-head" style="margin-bottom:8px;"><b>${escapeHtml(inv.procedure || "")}</b>${synced ? statusBadge(inv.status) : ""}<span class="patientSmall">${displayDateTs(inv.created_at)}</span></div>${lineItemsPills}${notesHtml}
       <div style="display:flex;flex-wrap:wrap;gap:8px 10px;margin-bottom:8px;font-size:12px;">
         <span>Total: ${Number(inv.cost || 0).toLocaleString()}</span>
         <span>Paid: ${paid.toLocaleString()}</span><span>Due: ${due.toLocaleString()}</span>
@@ -711,11 +871,14 @@ async function renderPatientBilling() {
           <input id="bCost" type="number" placeholder="Total Cost" style="max-width:120px;">
           <input id="bLab" type="number" placeholder="Lab Cost" style="max-width:120px;">
           <button type="button" id="addInvoiceBtn" class="btn btn-primary">+ Add Invoice</button>
+          <button type="button" id="addMultiServiceBtn" class="btn btn-secondary">+ Multi-Service</button>
         </div>
         <textarea id="bNotes" class="billing-notes" placeholder="Treatment notes, observations..." rows="3"></textarea>
       </div>
       <div id="billingList"></div>
     </div>`;
+
+  $("#addMultiServiceBtn").onclick = () => openMultiServiceInvoiceModal(pid);
 
   $("#addInvoiceBtn").onclick = async () => {
     const procedure = readProcedureChoice($("#bProcedure"));
@@ -1008,14 +1171,15 @@ function openPaymentModal(inv, patient_id) {
 
 function openEditInvoiceModal(inv, onSave) {
   const procedures = ["RCT", "Scaling", "Extraction", "Diagnosis", "Filling", "Crown", "Denture", "Bridge", "Implant", "Whitening", "Other"];
+  const existingLineItems = normalizeInvoiceLineItems(inv);
   const ov = document.createElement("div");
   ov.className = "modal";
   ov.innerHTML = `<div class="modal-content modal-content--billing">
     <h3>Edit Invoice #${inv.id}</h3>
     <label>Date</label><input id="eDate" type="date" value="${localYMD(new Date(inv.created_at))}">
-    <label>Procedure</label>
+    <label id="eProcLabel">${existingLineItems ? "Services" : "Procedure"}</label>
     <div id="eProcField"></div>
-    <label>Total Cost</label><input id="eCost" type="number" value="${Number(inv.cost || 0)}">
+    <label>Total Cost</label><input id="eCost" type="number" value="${Number(inv.cost || 0)}" ${existingLineItems ? "readonly" : ""}>
     <label>Lab Cost</label><input id="eLab" type="number" value="${Number(inv.lab_cost || 0)}">
     <label>Notes</label>
     <textarea id="eNotes" class="billing-notes" placeholder="Treatment notes, observations..." rows="3"></textarea>
@@ -1024,79 +1188,120 @@ function openEditInvoiceModal(inv, onSave) {
       <button type="button" id="eSave" class="btn btn-primary">Save</button>
     </div>
   </div>`;
-  ov.querySelector("#eProcField").innerHTML = `
+  document.body.appendChild(ov);
+
+  const eCost = ov.querySelector("#eCost");
+  let lineEditor = null;
+  let onDocClick = null;
+
+  if (existingLineItems) {
+    const listId = `eProcList-${Date.now()}`;
+    ov.querySelector("#eProcField").innerHTML = `
+<datalist id="${listId}">${billingProcedureOptionTags()}</datalist>
+<div data-line-items-editor>
+  <div data-line-items-rows></div>
+  <button type="button" class="btn btn-secondary btn-small" data-add-service style="margin:4px 0 12px;">Add Service</button>
+  <div data-line-items-total style="font-weight:700;font-size:14px;margin-bottom:8px;">Total: PKR ${Number(inv.cost || 0).toLocaleString()}</div>
+</div>`;
+    lineEditor = attachLineItemsEditor(ov.querySelector("[data-line-items-editor]"), {
+      listId,
+      initialItems: existingLineItems.map((i) => ({ name: i.name, cost: i.cost })),
+      onTotalChange: (total) => {
+        eCost.value = String(total);
+      }
+    });
+  } else {
+    ov.querySelector("#eProcField").innerHTML = `
 <div id="eProcWrap" style="position:relative;">
   <input id="eProc" type="text" value="${escapeHtml(String(inv.procedure || ""))}" autocomplete="off" style="width:100%; padding:8px; border:1px solid #ccd; border-radius:8px; font-size:14px; box-sizing:border-box;">
   <div id="eProcDropdown" style="display:none; position:absolute; top:calc(100% + 4px); left:0; right:0; z-index:9999; background:#fff; border:1px solid #ccd; border-radius:8px; box-shadow:0 10px 24px rgba(0,0,0,0.12); max-height:200px; overflow-y:auto;"></div>
 </div>`;
-  document.body.appendChild(ov);
-  const procWrap = ov.querySelector("#eProcWrap");
-  const procInput = ov.querySelector("#eProc");
-  const procDropdown = ov.querySelector("#eProcDropdown");
-  const renderProcedureOptions = (needle = "") => {
-    const q = String(needle || "").trim().toLowerCase();
-    const filtered = procedures.filter((p) => p.toLowerCase().includes(q));
-    procDropdown.innerHTML = filtered
-      .map((p) => `<div class="e-proc-item" data-value="${escapeHtml(p)}" style="padding:8px 12px; cursor:pointer;">${escapeHtml(p)}</div>`)
-      .join("");
-    if (!filtered.length) {
-      procDropdown.innerHTML = '<div style="padding:8px 12px; color:#6b7280;">No matches</div>';
-    }
-  };
-  const showProcedureDropdown = () => {
-    renderProcedureOptions(procInput.value);
-    procDropdown.style.display = "block";
-  };
-  const hideProcedureDropdown = () => {
-    procDropdown.style.display = "none";
-  };
-  procInput.addEventListener("focus", showProcedureDropdown);
-  procInput.addEventListener("click", showProcedureDropdown);
-  procInput.addEventListener("input", () => {
-    renderProcedureOptions(procInput.value);
-    procDropdown.style.display = "block";
-  });
-  procDropdown.addEventListener("mouseover", (e) => {
-    const item = e.target.closest(".e-proc-item");
-    if (item) item.style.background = "#f0f9f9";
-  });
-  procDropdown.addEventListener("mouseout", (e) => {
-    const item = e.target.closest(".e-proc-item");
-    if (item) item.style.background = "transparent";
-  });
-  procDropdown.addEventListener("click", (e) => {
-    const item = e.target.closest(".e-proc-item");
-    if (!item) return;
-    procInput.value = item.dataset.value || "";
-    hideProcedureDropdown();
-  });
-  const onDocClick = (e) => {
-    if (!procWrap.contains(e.target)) hideProcedureDropdown();
-  };
-  document.addEventListener("click", onDocClick);
+    const procWrap = ov.querySelector("#eProcWrap");
+    const procInput = ov.querySelector("#eProc");
+    const procDropdown = ov.querySelector("#eProcDropdown");
+    const renderProcedureOptions = (needle = "") => {
+      const q = String(needle || "").trim().toLowerCase();
+      const filtered = procedures.filter((p) => p.toLowerCase().includes(q));
+      procDropdown.innerHTML = filtered
+        .map((p) => `<div class="e-proc-item" data-value="${escapeHtml(p)}" style="padding:8px 12px; cursor:pointer;">${escapeHtml(p)}</div>`)
+        .join("");
+      if (!filtered.length) {
+        procDropdown.innerHTML = '<div style="padding:8px 12px; color:#6b7280;">No matches</div>';
+      }
+    };
+    const showProcedureDropdown = () => {
+      renderProcedureOptions(procInput.value);
+      procDropdown.style.display = "block";
+    };
+    const hideProcedureDropdown = () => {
+      procDropdown.style.display = "none";
+    };
+    procInput.addEventListener("focus", showProcedureDropdown);
+    procInput.addEventListener("click", showProcedureDropdown);
+    procInput.addEventListener("input", () => {
+      renderProcedureOptions(procInput.value);
+      procDropdown.style.display = "block";
+    });
+    procDropdown.addEventListener("mouseover", (e) => {
+      const item = e.target.closest(".e-proc-item");
+      if (item) item.style.background = "#f0f9f9";
+    });
+    procDropdown.addEventListener("mouseout", (e) => {
+      const item = e.target.closest(".e-proc-item");
+      if (item) item.style.background = "transparent";
+    });
+    procDropdown.addEventListener("click", (e) => {
+      const item = e.target.closest(".e-proc-item");
+      if (!item) return;
+      procInput.value = item.dataset.value || "";
+      hideProcedureDropdown();
+    });
+    onDocClick = (e) => {
+      if (!procWrap.contains(e.target)) hideProcedureDropdown();
+    };
+    document.addEventListener("click", onDocClick);
+  }
+
   ov.querySelector("#eNotes").value = inv.notes ?? "";
   ov.querySelector("#eCancel").onclick = () => {
-    document.removeEventListener("click", onDocClick);
+    if (onDocClick) document.removeEventListener("click", onDocClick);
     ov.remove();
   };
   ov.querySelector("#eSave").onclick = async () => {
-    const procedure = readProcedureChoice(ov.querySelector("#eProc"));
-    if (!procedure) return showToast("Procedure is required", "error");
     const notes = (ov.querySelector("#eNotes").value || "").trim();
-    await window.api.invoices.update({
+    let procedure;
+    let cost;
+    let line_items;
+
+    if (lineEditor) {
+      line_items = lineEditor.collectItems();
+      if (!line_items.length) return showToast("Add at least one service with procedure and cost", "error");
+      procedure = line_items.map((i) => i.name).join(", ");
+      cost = line_items.reduce((s, i) => s + i.cost, 0);
+    } else {
+      procedure = readProcedureChoice(ov.querySelector("#eProc"));
+      if (!procedure) return showToast("Procedure is required", "error");
+      cost = Number(eCost.value || 0);
+    }
+
+    const payload = {
       id: inv.id,
       created_at: new Date(`${ov.querySelector("#eDate").value}T12:00:00`).getTime(),
       procedure,
-      cost: Number(ov.querySelector("#eCost").value || 0),
+      cost,
       lab_cost: Number(ov.querySelector("#eLab").value || 0),
       notes
-    });
+    };
+    if (line_items) payload.line_items = line_items;
+
+    await window.api.invoices.update(payload);
     showToast("Invoice updated");
-    document.removeEventListener("click", onDocClick);
+    if (onDocClick) document.removeEventListener("click", onDocClick);
     ov.remove();
     onSave?.();
   };
 }
+
 
 async function openAddAppointmentModal() {
   const plist = await withLoading(() => window.api.patients.list());
