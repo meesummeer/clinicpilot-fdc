@@ -1019,7 +1019,8 @@ async function renderClinicBilling() {
     return ym ? pd.startsWith(ym) : true;
   });
   const sumCollected = paymentsInPeriod.reduce((s, p) => s + Number(p.amount || 0), 0);
-  const sumOutstanding = sumInvoiced - sumCollected;
+  const sumPaidOnMonthInvoices = rows.reduce((s, r) => s + r.paid, 0);
+  const sumOutstanding = sumInvoiced - sumPaidOnMonthInvoices;
 
   const invEl = $("#billingSummaryInvoiced");
   const colEl = $("#billingSummaryCollected");
