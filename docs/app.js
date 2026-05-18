@@ -1018,8 +1018,8 @@ async function renderClinicBilling() {
     const pd = String(p.date || "");
     return ym ? pd.startsWith(ym) : true;
   });
-  const sumCollected = paymentsInPeriod.reduce((s, p) => s + Number(p.amount || 0), 0);
   const sumPaidOnMonthInvoices = rows.reduce((s, r) => s + r.paid, 0);
+  const sumCollected = sumPaidOnMonthInvoices;
   const sumOutstanding = sumInvoiced - sumPaidOnMonthInvoices;
 
   const invEl = $("#billingSummaryInvoiced");
