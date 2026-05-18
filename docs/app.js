@@ -98,32 +98,29 @@ function buildCustomerCopyInvoiceHtml(inv, paid, due) {
   const dueTotalsRowStyle = dueN > 0 ? "color:#c62828;" : "";
   const hasLineItems = inv.line_items && inv.line_items.length > 0;
   const payTol = 1e-6;
-  let lineItemStatusLabel = "Unpaid";
-  let lineItemStatusColor = "#c62828";
-  if (hasLineItems) {
-    if (paidN <= payTol) {
-      lineItemStatusLabel = "Unpaid";
-      lineItemStatusColor = "#c62828";
-    } else if (paidN + payTol >= costN) {
-      lineItemStatusLabel = "Paid";
-      lineItemStatusColor = "#2e7d32";
-    } else {
-      lineItemStatusLabel = "Partial";
-      lineItemStatusColor = "#e65100";
-    }
-  }
   const tableBodyRows =
     hasLineItems
       ? inv.line_items
-          .map(
-            (item) => `
+          .map((item) => {
+            let lineItemStatusLabel = "Unpaid";
+            let lineItemStatusColor = "#c62828";
+            if (paidN <= payTol) {
+              lineItemStatusLabel = "Unpaid";
+              lineItemStatusColor = "#c62828";
+            } else if (paidN + payTol >= costN) {
+              lineItemStatusLabel = "Paid";
+              lineItemStatusColor = "#2e7d32";
+            } else {
+              lineItemStatusLabel = "Partial";
+              lineItemStatusColor = "#e65100";
+            }
+            return `
       <tr style="background:#f9f9f9;">
         <td style="padding:10px 12px;font-weight:600;font-size:13px;">${item.name}</td>
         <td style="padding:10px 12px;text-align:right;font-size:13px;">PKR ${Number(item.cost).toLocaleString()}</td>
-        <td style="padding:10px 12px;text-align:right;font-size:13px;">PKR ${Number(item.cost).toLocaleString()}</td>
         <td style="padding:10px 12px;text-align:center;font-size:13px;font-weight:600;color:${lineItemStatusColor};">${lineItemStatusLabel}</td>
-      </tr>`
-          )
+      </tr>`;
+          })
           .join("")
       : (() => {
           const proc = String(inv.procedure ?? "").trim() || "—";
@@ -131,7 +128,6 @@ function buildCustomerCopyInvoiceHtml(inv, paid, due) {
           const row = (name, amt) => `
       <tr style="background:#f9f9f9;">
         <td style="padding:10px 12px;font-weight:600;font-size:13px;">${name}</td>
-        <td style="padding:10px 12px;text-align:right;font-size:13px;">PKR ${Number(amt).toLocaleString()}</td>
         <td style="padding:10px 12px;text-align:right;font-size:13px;">PKR ${Number(amt).toLocaleString()}</td>
       </tr>`;
           if (proc.includes(",")) {
@@ -184,7 +180,6 @@ function buildCustomerCopyInvoiceHtml(inv, paid, due) {
     <thead>
       <tr style="background:#2d3748; color:white;">
         <th style="padding:10px 12px; text-align:left; font-size:13px;">Procedure</th>
-        <th style="padding:10px 12px; text-align:right; font-size:13px;">Rate</th>
         <th style="padding:10px 12px; text-align:right; font-size:13px;">Amount</th>
         ${hasLineItems ? '<th style="padding:10px 12px; text-align:center; font-size:13px;">Status</th>' : ""}
       </tr>
@@ -380,6 +375,24 @@ function normalizeInvoiceLineItems(inv) {
     }))
     .filter((i) => i.name || i.cost > 0);
   return items.length ? items : null;
+}
+
+/** FIFO allocation of invoice payments across line items (display only). */
+function allocateLineItemPaymentStatus(items, paidPrior) {
+  let remaining = Math.max(0, Number(paidPrior || 0));
+  const tol = 1e-6;
+  return items.map((item) => {
+    const cost = Number(item.cost || 0);
+    let status = "unpaid";
+    if (remaining + tol >= cost) {
+      status = "paid";
+      remaining = Math.max(0, remaining - cost);
+    } else if (remaining > tol) {
+      status = "partial";
+      remaining = 0;
+    }
+    return { ...item, status };
+  });
 }
 
 function formatLineItemsCardHtml(inv) {
@@ -1093,10 +1106,17 @@ function openPaymentModal(inv, patient_id) {
   const linked = billingDataCache.payments.filter((p) => String(p.invoice_id) === String(inv.id));
   const paidPrior = linked.reduce((s, p) => s + Number(p.amount || 0), 0);
   const outstanding = Math.max(0, totalCost - paidPrior);
+  const lineItems = normalizeInvoiceLineItems(inv);
+  const servicePickerHtml = lineItems
+    ? `<div id="pServicePicker" style="display:flex;flex-direction:column;gap:8px;">
+        <label style="font-size:0.8125rem;font-weight:600;color:var(--muted);">Select services to pay for</label>
+        <div id="pServicePickerList" style="display:flex;flex-direction:column;gap:8px;"></div>
+      </div>`
+    : "";
 
   const ov = document.createElement("div");
   ov.className = "modal";
-  ov.innerHTML = `<div class="modal-content modal-content--payment-record" role="dialog" aria-labelledby="payModalTitle">
+  ov.innerHTML = `<div class="modal-content modal-content--payment-record" role="dialog" aria-labelledby="payModalTitle"${lineItems ? ' style="width:min(480px,100%);"' : ""}>
     <h2 id="payModalTitle" class="payment-modal-title">Record Payment</h2>
     <p class="payment-modal-sub"><span style="display:block">${escapeHtml(inv.procedure || "—")}</span><span>${pkMoney(totalCost)} invoice total</span></p>
     <div class="payment-form-stack">
@@ -1104,6 +1124,7 @@ function openPaymentModal(inv, patient_id) {
         <label for="pDate">Payment Date</label>
         <input id="pDate" type="date" value="${localYMD(new Date())}">
       </div>
+      ${servicePickerHtml}
       <div>
         <label for="pAmount">Amount in PKR</label>
         <input id="pAmount" type="number" step="any" min="1" placeholder="0">
@@ -1123,15 +1144,44 @@ function openPaymentModal(inv, patient_id) {
   const amtInput = ov.querySelector("#pAmount");
   const hintEl = ov.querySelector("#pRemainingHint");
 
-  amtInput?.addEventListener("input", () => {
-    const entered = Number(amtInput.value || 0);
+  const updateRemainingHint = () => {
+    const entered = Number(amtInput?.value || 0);
     const projected = outstanding - entered;
     if (!hintEl) return;
     hintEl.textContent =
       projected >= 0
         ? `Remaining: ${pkMoney(projected)}`
         : `Over outstanding by ${pkMoney(Math.abs(projected))}`;
-  });
+  };
+
+  amtInput?.addEventListener("input", updateRemainingHint);
+
+  if (lineItems) {
+    const itemsWithStatus = allocateLineItemPaymentStatus(lineItems, paidPrior);
+    const pickerList = ov.querySelector("#pServicePickerList");
+    const selected = new Set();
+    const syncAmountFromSelection = () => {
+      const sum = [...selected].reduce((s, i) => s + Number(itemsWithStatus[i].cost || 0), 0);
+      if (amtInput) amtInput.value = sum > 0 ? String(sum) : "";
+      updateRemainingHint();
+    };
+    itemsWithStatus.forEach((item, i) => {
+      const row = document.createElement("button");
+      row.type = "button";
+      row.style.cssText =
+        "display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;padding:10px 12px;border:2px solid #e5e7eb;border-radius:8px;background:#fff;cursor:pointer;text-align:left;font:inherit;";
+      row.innerHTML = `<span style="display:flex;flex-direction:column;gap:2px;flex:1;min-width:0;"><span style="font-weight:600;">${escapeHtml(item.name)}</span><span style="font-size:0.8125rem;color:#6b7280;">${pkMoney(item.cost)}</span></span>${statusBadge(item.status)}`;
+      row.onclick = () => {
+        if (selected.has(i)) selected.delete(i);
+        else selected.add(i);
+        const on = selected.has(i);
+        row.style.borderColor = on ? "#009688" : "#e5e7eb";
+        row.style.background = on ? "#e0f2f1" : "#fff";
+        syncAmountFromSelection();
+      };
+      pickerList.appendChild(row);
+    });
+  }
 
   ov.querySelector("#pCancel").onclick = () => ov.remove();
   ov.querySelector("#pSave").onclick = async () => {
