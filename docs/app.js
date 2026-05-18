@@ -96,16 +96,32 @@ function buildCustomerCopyInvoiceHtml(inv, paid, due) {
   const dueColor = dueN > 0 ? "#c62828" : "#2e7d32";
   const dueDisplay = dueN > 0 ? `PKR ${dueStr}` : "Paid in Full";
   const dueTotalsRowStyle = dueN > 0 ? "color:#c62828;" : "";
+  const hasLineItems = inv.line_items && inv.line_items.length > 0;
+  const payTol = 1e-6;
+  let lineItemStatusLabel = "Unpaid";
+  let lineItemStatusColor = "#c62828";
+  if (hasLineItems) {
+    if (paidN <= payTol) {
+      lineItemStatusLabel = "Unpaid";
+      lineItemStatusColor = "#c62828";
+    } else if (paidN + payTol >= costN) {
+      lineItemStatusLabel = "Paid";
+      lineItemStatusColor = "#2e7d32";
+    } else {
+      lineItemStatusLabel = "Partial";
+      lineItemStatusColor = "#e65100";
+    }
+  }
   const tableBodyRows =
-    inv.line_items && inv.line_items.length > 0
+    hasLineItems
       ? inv.line_items
           .map(
             (item) => `
       <tr style="background:#f9f9f9;">
         <td style="padding:10px 12px;font-weight:600;font-size:13px;">${item.name}</td>
-        <td style="padding:10px 12px;text-align:center;font-size:13px;">1</td>
         <td style="padding:10px 12px;text-align:right;font-size:13px;">PKR ${Number(item.cost).toLocaleString()}</td>
         <td style="padding:10px 12px;text-align:right;font-size:13px;">PKR ${Number(item.cost).toLocaleString()}</td>
+        <td style="padding:10px 12px;text-align:center;font-size:13px;font-weight:600;color:${lineItemStatusColor};">${lineItemStatusLabel}</td>
       </tr>`
           )
           .join("")
@@ -115,7 +131,6 @@ function buildCustomerCopyInvoiceHtml(inv, paid, due) {
           const row = (name, amt) => `
       <tr style="background:#f9f9f9;">
         <td style="padding:10px 12px;font-weight:600;font-size:13px;">${name}</td>
-        <td style="padding:10px 12px;text-align:center;font-size:13px;">1</td>
         <td style="padding:10px 12px;text-align:right;font-size:13px;">PKR ${Number(amt).toLocaleString()}</td>
         <td style="padding:10px 12px;text-align:right;font-size:13px;">PKR ${Number(amt).toLocaleString()}</td>
       </tr>`;
@@ -169,9 +184,9 @@ function buildCustomerCopyInvoiceHtml(inv, paid, due) {
     <thead>
       <tr style="background:#2d3748; color:white;">
         <th style="padding:10px 12px; text-align:left; font-size:13px;">Procedure</th>
-        <th style="padding:10px 12px; text-align:center; font-size:13px;">Quantity</th>
         <th style="padding:10px 12px; text-align:right; font-size:13px;">Rate</th>
         <th style="padding:10px 12px; text-align:right; font-size:13px;">Amount</th>
+        ${hasLineItems ? '<th style="padding:10px 12px; text-align:center; font-size:13px;">Status</th>' : ""}
       </tr>
     </thead>
     <tbody>
@@ -512,6 +527,23 @@ function localYMD(d) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
+/** Unpaid (grey) / Paid (green) toggle for new-invoice forms. Returns getter for paid state. */
+function bindInvoicePaidToggle(btn) {
+  let isPaid = false;
+  const sync = () => {
+    btn.textContent = isPaid ? "Paid" : "Unpaid";
+    btn.style.background = isPaid ? "#2e7d32" : "#9e9e9e";
+    btn.style.borderColor = isPaid ? "#2e7d32" : "#9e9e9e";
+    btn.style.color = "#fff";
+  };
+  btn.onclick = () => {
+    isPaid = !isPaid;
+    sync();
+  };
+  sync();
+  return () => isPaid;
+}
+
 function patientKey(p) {
   return String(p?.id || p?.external_id || p?.["Case No."] || "").trim();
 }
@@ -719,37 +751,6 @@ async function openTab(tab) {
       <p><b>Gender:</b> ${currentPatient.gender || "—"}</p>`;
     return;
   }
-  if (tab === "soap") {
-    const pid = currentPatient.id || currentPatient.external_id;
-    c.innerHTML =
-      '<textarea id="soapText" class="note"></textarea><button type="button" id="soapSave" class="btn btn-primary" style="margin-top:8px">Add Note</button><div id="soapList" style="margin-top:12px"></div>';
-    const render = async () => {
-      const notes = await withLoading(() => window.api.notes.list(pid));
-      const sl = $("#soapList");
-      sl.innerHTML = "";
-      notes.forEach((n) => {
-        const r = document.createElement("div");
-        r.className = "soap-note-row";
-        r.innerHTML = `<div>${displayDateTs(n.at)} ${new Date(n.at).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}: ${escapeHtml(n.text)}</div><button type="button" class="btn btn-danger btn-small">×</button>`;
-        r.querySelector("button").onclick = async () => {
-          await window.api.notes.delete({ patient_id: pid, note_id: n.id });
-          showToast("Note deleted");
-          render();
-        };
-        sl.appendChild(r);
-      });
-    };
-    $("#soapSave").onclick = async () => {
-      const text = ($("#soapText").value || "").trim();
-      if (!text) return;
-      await window.api.notes.add({ patient_id: pid, text });
-      $("#soapText").value = "";
-      showToast("Note saved");
-      render();
-    };
-    await render();
-    return;
-  }
   await renderPatientBilling();
 }
 
@@ -853,6 +854,7 @@ async function renderPatientBilling() {
           <datalist id="procList">${billingProcedureOptionTags()}</datalist>
           <input id="bCost" type="number" placeholder="Total Cost" style="max-width:120px;">
           <input id="bLab" type="number" placeholder="Lab Cost" style="max-width:120px;">
+          <button type="button" id="bInvoiceStatus" class="btn">Unpaid</button>
           <button type="button" id="addInvoiceBtn" class="btn btn-primary">+ Add Invoice</button>
         </div>
         <textarea id="bNotes" class="billing-notes" placeholder="Treatment notes, observations..." rows="3"></textarea>
@@ -860,6 +862,7 @@ async function renderPatientBilling() {
       <div id="billingList"></div>
     </div>`;
 
+  const getInvoicePaid = bindInvoicePaidToggle($("#bInvoiceStatus"));
   const addInvBtn = $("#addInvoiceBtn");
   const multiBtn = document.createElement("button");
   multiBtn.className = "btn";
@@ -904,7 +907,7 @@ async function renderPatientBilling() {
     paintBillingInvoiceCards();
     showSavingPeek();
     try {
-      await window.api.invoices.add({
+      const invRes = await window.api.invoices.add({
         patient_id: pid,
         procedure,
         cost: costVal,
@@ -912,6 +915,15 @@ async function renderPatientBilling() {
         created_at: new Date((dateStr || d) + "T12:00:00").getTime(),
         notes
       });
+      if (getInvoicePaid()) {
+        await window.api.payments.add({
+          invoice_id: invRes.invoice.id,
+          patient_id: pid,
+          date: localYMD(new Date()),
+          amount: costVal,
+          payment_mode: "Cash"
+        });
+      }
       showToast("Invoice added");
       await reloadPatientBillingQuiet();
     } catch (e) {
@@ -1625,6 +1637,9 @@ function openMultiServiceModal(pid, onSave) {
       <div id="msTotal" style="text-align:right;font-weight:700;font-size:15px;margin-bottom:12px;">Total: PKR 0</div>
       <label>Notes</label>
       <textarea id="msNotes" style="width:100%;padding:8px;border:1px solid #ccd;border-radius:8px;min-height:60px;margin-bottom:16px;" placeholder="Treatment notes..."></textarea>
+      <div style="margin-bottom:12px;">
+        <button type="button" id="msInvoiceStatus" class="btn">Unpaid</button>
+      </div>
       <div style="display:flex;gap:8px;justify-content:flex-end;">
         <button id="msCancel" class="btn">Cancel</button>
         <button id="msSave" class="btn primary">Save Invoice</button>
@@ -1633,6 +1648,7 @@ function openMultiServiceModal(pid, onSave) {
 
   document.body.appendChild(ov);
 
+  const getMsInvoicePaid = bindInvoicePaidToggle(ov.querySelector("#msInvoiceStatus"));
   const lineItemsDiv = ov.querySelector("#msLineItems");
   const totalDiv = ov.querySelector("#msTotal");
 
@@ -1693,7 +1709,7 @@ function openMultiServiceModal(pid, onSave) {
     const btn = ov.querySelector("#msSave");
     btn.disabled = true;
     btn.textContent = "Saving...";
-    await window.api.invoices.add({
+    const invRes = await window.api.invoices.add({
       patient_id: pid,
       procedure: items.map((i) => i.name).join(", "),
       cost: total,
@@ -1702,6 +1718,15 @@ function openMultiServiceModal(pid, onSave) {
       created_at: new Date(dateStr + "T00:00:00").getTime(),
       line_items: items
     });
+    if (getMsInvoicePaid()) {
+      await window.api.payments.add({
+        invoice_id: invRes.invoice.id,
+        patient_id: pid,
+        date: localYMD(new Date()),
+        amount: total,
+        payment_mode: "Cash"
+      });
+    }
     ov.remove();
     if (onSave) onSave();
   };
