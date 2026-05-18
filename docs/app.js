@@ -377,24 +377,6 @@ function normalizeInvoiceLineItems(inv) {
   return items.length ? items : null;
 }
 
-/** FIFO allocation of invoice payments across line items (display only). */
-function allocateLineItemPaymentStatus(items, paidPrior) {
-  let remaining = Math.max(0, Number(paidPrior || 0));
-  const tol = 1e-6;
-  return items.map((item) => {
-    const cost = Number(item.cost || 0);
-    let status = "unpaid";
-    if (remaining + tol >= cost) {
-      status = "paid";
-      remaining = Math.max(0, remaining - cost);
-    } else if (remaining > tol) {
-      status = "partial";
-      remaining = 0;
-    }
-    return { ...item, status };
-  });
-}
-
 function formatLineItemsCardHtml(inv) {
   if (!inv.line_items || !inv.line_items.length) return "";
   const lines = inv.line_items.map(
@@ -1106,25 +1088,22 @@ function openPaymentModal(inv, patient_id) {
   const linked = billingDataCache.payments.filter((p) => String(p.invoice_id) === String(inv.id));
   const paidPrior = linked.reduce((s, p) => s + Number(p.amount || 0), 0);
   const outstanding = Math.max(0, totalCost - paidPrior);
-  const lineItems = normalizeInvoiceLineItems(inv);
-  const servicePickerHtml = lineItems
-    ? `<div id="pServicePicker" style="display:flex;flex-direction:column;gap:8px;">
-        <label style="font-size:0.8125rem;font-weight:600;color:var(--muted);">Select services to pay for</label>
-        <div id="pServicePickerList" style="display:flex;flex-direction:column;gap:8px;"></div>
-      </div>`
+  const hasLineItems = inv.line_items && inv.line_items.length > 0;
+  const lineItemPickerHtml = hasLineItems
+    ? `<div id="pLineItemPicker" style="display:flex;flex-direction:column;gap:8px;margin-bottom:14px;"></div>`
     : "";
 
   const ov = document.createElement("div");
   ov.className = "modal";
-  ov.innerHTML = `<div class="modal-content modal-content--payment-record" role="dialog" aria-labelledby="payModalTitle"${lineItems ? ' style="width:min(480px,100%);"' : ""}>
+  ov.innerHTML = `<div class="modal-content modal-content--payment-record" role="dialog" aria-labelledby="payModalTitle">
     <h2 id="payModalTitle" class="payment-modal-title">Record Payment</h2>
     <p class="payment-modal-sub"><span style="display:block">${escapeHtml(inv.procedure || "—")}</span><span>${pkMoney(totalCost)} invoice total</span></p>
+    ${lineItemPickerHtml}
     <div class="payment-form-stack">
       <div>
         <label for="pDate">Payment Date</label>
         <input id="pDate" type="date" value="${localYMD(new Date())}">
       </div>
-      ${servicePickerHtml}
       <div>
         <label for="pAmount">Amount in PKR</label>
         <input id="pAmount" type="number" step="any" min="1" placeholder="0">
@@ -1156,30 +1135,40 @@ function openPaymentModal(inv, patient_id) {
 
   amtInput?.addEventListener("input", updateRemainingHint);
 
-  if (lineItems) {
-    const itemsWithStatus = allocateLineItemPaymentStatus(lineItems, paidPrior);
-    const pickerList = ov.querySelector("#pServicePickerList");
+  if (hasLineItems) {
+    const items = normalizeInvoiceLineItems(inv) || [];
+    const picker = ov.querySelector("#pLineItemPicker");
     const selected = new Set();
     const syncAmountFromSelection = () => {
-      const sum = [...selected].reduce((s, i) => s + Number(itemsWithStatus[i].cost || 0), 0);
-      if (amtInput) amtInput.value = sum > 0 ? String(sum) : "";
+      const sum = [...selected].reduce((s, i) => s + Number(items[i].cost || 0), 0);
+      if (amtInput) amtInput.value = sum > 0 ? String(sum) : "0";
       updateRemainingHint();
     };
-    itemsWithStatus.forEach((item, i) => {
+    items.forEach((item, i) => {
       const row = document.createElement("button");
       row.type = "button";
+      const cb = document.createElement("input");
+      cb.type = "checkbox";
+      cb.style.cssText = "pointer-events:none;margin:0;flex-shrink:0;";
+      const nameEl = document.createElement("span");
+      nameEl.style.cssText = "flex:1;font-weight:600;text-align:left;";
+      nameEl.textContent = item.name;
+      const costEl = document.createElement("span");
+      costEl.style.cssText = "font-size:0.875rem;color:#374151;white-space:nowrap;";
+      costEl.textContent = pkMoney(item.cost);
       row.style.cssText =
-        "display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;padding:10px 12px;border:2px solid #e5e7eb;border-radius:8px;background:#fff;cursor:pointer;text-align:left;font:inherit;";
-      row.innerHTML = `<span style="display:flex;flex-direction:column;gap:2px;flex:1;min-width:0;"><span style="font-weight:600;">${escapeHtml(item.name)}</span><span style="font-size:0.8125rem;color:#6b7280;">${pkMoney(item.cost)}</span></span>${statusBadge(item.status)}`;
+        "display:flex;align-items:center;gap:10px;width:100%;padding:10px 12px;border:2px solid #e5e7eb;border-radius:8px;background:#fff;cursor:pointer;font:inherit;";
+      row.append(cb, nameEl, costEl);
       row.onclick = () => {
         if (selected.has(i)) selected.delete(i);
         else selected.add(i);
         const on = selected.has(i);
+        cb.checked = on;
+        row.style.background = on ? "#e8f5e9" : "#fff";
         row.style.borderColor = on ? "#009688" : "#e5e7eb";
-        row.style.background = on ? "#e0f2f1" : "#fff";
         syncAmountFromSelection();
       };
-      pickerList.appendChild(row);
+      picker.appendChild(row);
     });
   }
 
