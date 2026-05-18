@@ -1090,7 +1090,7 @@ function openPaymentModal(inv, patient_id) {
   const outstanding = Math.max(0, totalCost - paidPrior);
   const hasLineItems = inv.line_items && inv.line_items.length > 0;
   const lineItemPickerHtml = hasLineItems
-    ? `<div id="pLineItemPicker" style="display:flex;flex-direction:column;gap:8px;margin-bottom:14px;"></div>`
+    ? `<div id="pLineItemPicker" style="border:1px solid #e2e8f0;border-radius:8px;padding:8px;margin-bottom:12px;"></div>`
     : "";
 
   const ov = document.createElement("div");
@@ -1120,24 +1120,14 @@ function openPaymentModal(inv, patient_id) {
     </div>
   </div>`;
   document.body.appendChild(ov);
-  const amtInput = ov.querySelector("#pAmount");
-  const hintEl = ov.querySelector("#pRemainingHint");
-
-  const updateRemainingHint = () => {
-    const entered = Number(amtInput?.value || 0);
-    const projected = outstanding - entered;
-    if (!hintEl) return;
-    hintEl.textContent =
-      projected >= 0
-        ? `Remaining: ${pkMoney(projected)}`
-        : `Over outstanding by ${pkMoney(Math.abs(projected))}`;
-  };
-
-  amtInput?.addEventListener("input", updateRemainingHint);
 
   if (hasLineItems) {
     const items = normalizeInvoiceLineItems(inv) || [];
     const picker = ov.querySelector("#pLineItemPicker");
+    const pickerLabel = document.createElement("p");
+    pickerLabel.style.cssText = "font-weight:600;margin-bottom:6px;";
+    pickerLabel.textContent = "Select services being paid:";
+    picker.appendChild(pickerLabel);
     const selected = new Set();
     const syncAmountFromSelection = () => {
       const sum = [...selected].reduce((s, i) => s + Number(items[i].cost || 0), 0);
@@ -1171,6 +1161,21 @@ function openPaymentModal(inv, patient_id) {
       picker.appendChild(row);
     });
   }
+
+  const amtInput = ov.querySelector("#pAmount");
+  const hintEl = ov.querySelector("#pRemainingHint");
+
+  const updateRemainingHint = () => {
+    const entered = Number(amtInput?.value || 0);
+    const projected = outstanding - entered;
+    if (!hintEl) return;
+    hintEl.textContent =
+      projected >= 0
+        ? `Remaining: ${pkMoney(projected)}`
+        : `Over outstanding by ${pkMoney(Math.abs(projected))}`;
+  };
+
+  amtInput?.addEventListener("input", updateRemainingHint);
 
   ov.querySelector("#pCancel").onclick = () => ov.remove();
   ov.querySelector("#pSave").onclick = async () => {
