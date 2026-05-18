@@ -804,14 +804,16 @@ function paintBillingInvoiceCards() {
       .sort((a, b) => String(a.date).localeCompare(String(b.date)))
       .forEach((p) => {
         const tr = document.createElement("tr");
-        const tail = p.__optimistic ? "<td></td>" : '<td><button type="button" class="btn btn-danger btn-small">×</button></td>';
+        const tail = p.__optimistic
+          ? "<td></td>"
+          : '<td><button type="button" class="btn btn-danger btn-small" aria-label="Delete payment">✕</button></td>';
         tr.innerHTML = `<td>${displayDateYYYYMMDD(p.date)}</td><td>${Number(p.amount).toLocaleString()}</td><td>${escapeHtml(String(p.payment_mode || ""))}</td>${tail}`;
         const delBtn = tr.querySelector("button");
         if (delBtn && !p.__optimistic) {
           delBtn.onclick = async () => {
-            await window.api.payments.delete(p.id, inv.id);
+            await window.api.payments.delete(p.id, p.invoice_id);
             showToast("Payment deleted");
-            await renderPatientBilling();
+            await reloadPatientBillingQuiet();
           };
         }
         tb.appendChild(tr);
@@ -1121,46 +1123,49 @@ function openPaymentModal(inv, patient_id) {
   </div>`;
   document.body.appendChild(ov);
 
-  if (hasLineItems) {
-    const items = normalizeInvoiceLineItems(inv) || [];
-    const picker = ov.querySelector("#pLineItemPicker");
-    const pickerLabel = document.createElement("p");
-    pickerLabel.style.cssText = "font-weight:600;margin-bottom:6px;";
-    pickerLabel.textContent = "Select services being paid:";
-    picker.appendChild(pickerLabel);
-    const selected = new Set();
-    const syncAmountFromSelection = () => {
-      const sum = [...selected].reduce((s, i) => s + Number(items[i].cost || 0), 0);
-      if (amtInput) amtInput.value = sum > 0 ? String(sum) : "0";
-      updateRemainingHint();
-    };
-    items.forEach((item, i) => {
-      const row = document.createElement("button");
-      row.type = "button";
-      const cb = document.createElement("input");
-      cb.type = "checkbox";
-      cb.style.cssText = "pointer-events:none;margin:0;flex-shrink:0;";
-      const nameEl = document.createElement("span");
-      nameEl.style.cssText = "flex:1;font-weight:600;text-align:left;";
-      nameEl.textContent = item.name;
-      const costEl = document.createElement("span");
-      costEl.style.cssText = "font-size:0.875rem;color:#374151;white-space:nowrap;";
-      costEl.textContent = pkMoney(item.cost);
-      row.style.cssText =
-        "display:flex;align-items:center;gap:10px;width:100%;padding:10px 12px;border:2px solid #e5e7eb;border-radius:8px;background:#fff;cursor:pointer;font:inherit;";
-      row.append(cb, nameEl, costEl);
-      row.onclick = () => {
-        if (selected.has(i)) selected.delete(i);
-        else selected.add(i);
-        const on = selected.has(i);
-        cb.checked = on;
-        row.style.background = on ? "#e8f5e9" : "#fff";
-        row.style.borderColor = on ? "#009688" : "#e5e7eb";
-        syncAmountFromSelection();
+  setTimeout(() => {
+    if (hasLineItems) {
+      const items = normalizeInvoiceLineItems(inv) || [];
+      const picker = document.getElementById("pLineItemPicker");
+      if (!picker) return;
+      const pickerLabel = document.createElement("p");
+      pickerLabel.style.cssText = "font-weight:600;margin-bottom:6px;";
+      pickerLabel.textContent = "Select services being paid:";
+      picker.appendChild(pickerLabel);
+      const selected = new Set();
+      const syncAmountFromSelection = () => {
+        const sum = [...selected].reduce((s, i) => s + Number(items[i].cost || 0), 0);
+        if (amtInput) amtInput.value = sum > 0 ? String(sum) : "0";
+        updateRemainingHint();
       };
-      picker.appendChild(row);
-    });
-  }
+      items.forEach((item, i) => {
+        const row = document.createElement("button");
+        row.type = "button";
+        const cb = document.createElement("input");
+        cb.type = "checkbox";
+        cb.style.cssText = "pointer-events:none;margin:0;flex-shrink:0;";
+        const nameEl = document.createElement("span");
+        nameEl.style.cssText = "flex:1;font-weight:600;text-align:left;";
+        nameEl.textContent = item.name;
+        const costEl = document.createElement("span");
+        costEl.style.cssText = "font-size:0.875rem;color:#374151;white-space:nowrap;";
+        costEl.textContent = pkMoney(item.cost);
+        row.style.cssText =
+          "display:flex;align-items:center;gap:10px;width:100%;padding:10px 12px;border:2px solid #e5e7eb;border-radius:8px;background:#fff;cursor:pointer;font:inherit;";
+        row.append(cb, nameEl, costEl);
+        row.onclick = () => {
+          if (selected.has(i)) selected.delete(i);
+          else selected.add(i);
+          const on = selected.has(i);
+          cb.checked = on;
+          row.style.background = on ? "#e8f5e9" : "#fff";
+          row.style.borderColor = on ? "#009688" : "#e5e7eb";
+          syncAmountFromSelection();
+        };
+        picker.appendChild(row);
+      });
+    }
+  }, 0);
 
   const amtInput = ov.querySelector("#pAmount");
   const hintEl = ov.querySelector("#pRemainingHint");
