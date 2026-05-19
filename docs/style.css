@@ -1432,7 +1432,8 @@ body {
 
 .billing-payments-table th:nth-child(4),
 .billing-payments-table td:nth-child(4) {
-  width: 46px;
+  width: 48px;
+  min-width: 48px;
   text-align: center;
 }
 
