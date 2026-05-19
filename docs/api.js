@@ -274,7 +274,8 @@ window.api = {
         lab_cost: Number(invPayload.lab_cost || 0),
         cost: Number(invPayload.cost || 0),
         status: (invPayload.status || "unpaid").toLowerCase(),
-        notes: invPayload.notes ?? ""
+        notes: invPayload.notes ?? "",
+        ...(Array.isArray(invPayload.line_items) && invPayload.line_items.length > 0 ? { line_items: invPayload.line_items } : {})
       });
       const merged = mapInvoiceSnapshot(await getDoc(ref));
       return { ok: true, invoice: merged };
