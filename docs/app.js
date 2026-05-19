@@ -98,45 +98,36 @@ function buildCustomerCopyInvoiceHtml(inv, paid, due) {
   const dueTotalsRowStyle = dueN > 0 ? "color:#c62828;" : "";
   const hasLineItems = inv.line_items && inv.line_items.length > 0;
   const payTol = 1e-6;
+
+  // Determine invoice-level status label/color
+  let invStatusLabel = "Unpaid";
+  let invStatusColor = "#c62828";
+  if (paidN <= payTol) {
+    invStatusLabel = "Unpaid";
+    invStatusColor = "#c62828";
+  } else if (paidN + payTol >= costN) {
+    invStatusLabel = "Paid";
+    invStatusColor = "#2e7d32";
+  } else {
+    invStatusLabel = "Partial";
+    invStatusColor = "#e65100";
+  }
+
   const tableBodyRows =
     hasLineItems
       ? inv.line_items
           .map((item) => {
-            let lineItemStatusLabel = "Unpaid";
-            let lineItemStatusColor = "#c62828";
-            if (paidN <= payTol) {
-              lineItemStatusLabel = "Unpaid";
-              lineItemStatusColor = "#c62828";
-            } else if (paidN + payTol >= costN) {
-              lineItemStatusLabel = "Paid";
-              lineItemStatusColor = "#2e7d32";
-            } else {
-              lineItemStatusLabel = "Partial";
-              lineItemStatusColor = "#e65100";
-            }
             return `
       <tr style="background:#f9f9f9;">
         <td style="padding:10px 12px;font-weight:600;font-size:13px;">${item.name}</td>
         <td style="padding:10px 12px;text-align:right;font-size:13px;">PKR ${Number(item.cost).toLocaleString()}</td>
-        <td style="padding:10px 12px;text-align:center;font-size:13px;font-weight:600;color:${lineItemStatusColor};">${lineItemStatusLabel}</td>
+        <td style="padding:10px 12px;text-align:center;font-size:13px;font-weight:600;color:${invStatusColor};">${invStatusLabel}</td>
       </tr>`;
           })
           .join("")
       : (() => {
           const proc = String(inv.procedure ?? "").trim() || "—";
           const total = Number(inv.cost || 0);
-          let invStatusLabel = "Unpaid";
-          let invStatusColor = "#c62828";
-          if (paidN <= payTol) {
-            invStatusLabel = "Unpaid";
-            invStatusColor = "#c62828";
-          } else if (paidN + payTol >= costN) {
-            invStatusLabel = "Paid";
-            invStatusColor = "#2e7d32";
-          } else {
-            invStatusLabel = "Partial";
-            invStatusColor = "#e65100";
-          }
           const row = (name, amt) => `
       <tr style="background:#f9f9f9;">
         <td style="padding:10px 12px;font-weight:600;font-size:13px;">${name}</td>
@@ -194,7 +185,7 @@ function buildCustomerCopyInvoiceHtml(inv, paid, due) {
       <tr style="background:#2d3748; color:white;">
         <th style="padding:10px 12px; text-align:left; font-size:13px;">Procedure</th>
         <th style="padding:10px 12px; text-align:right; font-size:13px;">Amount</th>
-        ${hasLineItems ? '<th style="padding:10px 12px; text-align:center; font-size:13px;">Status</th>' : ""}
+        <th style="padding:10px 12px; text-align:center; font-size:13px;">Status</th>
       </tr>
     </thead>
     <tbody>
@@ -407,8 +398,6 @@ function buildCustomerCopyProcedureRows(inv) {
         (item) => `
     <tr style="background:#f9f9f9;">
       <td style="padding:10px 12px; font-weight:600; font-size:13px;">${escapeHtml(String(item.name ?? ""))}</td>
-      <td style="padding:10px 12px; text-align:center; font-size:13px;">1</td>
-      <td style="padding:10px 12px; text-align:right; font-size:13px;">PKR ${Number(item.cost).toLocaleString()}</td>
       <td style="padding:10px 12px; text-align:right; font-size:13px;">PKR ${Number(item.cost).toLocaleString()}</td>
     </tr>`
       )
@@ -419,8 +408,6 @@ function buildCustomerCopyProcedureRows(inv) {
     const row = (name, amt) => `
     <tr style="background:#f9f9f9;">
       <td style="padding:10px 12px; font-weight:600; font-size:13px;">${escapeHtml(name)}</td>
-      <td style="padding:10px 12px; text-align:center; font-size:13px;">1</td>
-      <td style="padding:10px 12px; text-align:right; font-size:13px;">PKR ${Number(amt).toLocaleString()}</td>
       <td style="padding:10px 12px; text-align:right; font-size:13px;">PKR ${Number(amt).toLocaleString()}</td>
     </tr>`;
     if (proc.includes(",")) {
@@ -1035,11 +1022,6 @@ async function renderClinicBilling() {
     sumInvoiced += r.total;
   });
 
-  const paymentsInPeriod = (payments || []).filter((p) => {
-    if (billingAllTime) return true;
-    const pd = String(p.date || "");
-    return ym ? pd.startsWith(ym) : true;
-  });
   const sumPaidOnMonthInvoices = rows.reduce((s, r) => s + r.paid, 0);
   const sumCollected = sumPaidOnMonthInvoices;
   const sumOutstanding = sumInvoiced - sumPaidOnMonthInvoices;
@@ -1103,7 +1085,8 @@ function openPaymentModal(inv, patient_id) {
   const linked = billingDataCache.payments.filter((p) => String(p.invoice_id) === String(inv.id));
   const paidPrior = linked.reduce((s, p) => s + Number(p.amount || 0), 0);
   const outstanding = Math.max(0, totalCost - paidPrior);
-  const hasLineItems = inv.line_items && inv.line_items.length > 0;
+  const _normalizedItems = normalizeInvoiceLineItems(inv) || [];
+  const hasLineItems = _normalizedItems.length > 0;
   const lineItemPickerHtml = hasLineItems
     ? `<div id="pLineItemPicker" style="border:1px solid #e2e8f0;border-radius:8px;padding:8px;margin-bottom:12px;"><p style="font-weight:600;font-size:13px;margin:0 0 8px 0;color:#374151;">Select services being paid:</p></div>`
     : "";
@@ -1137,18 +1120,14 @@ function openPaymentModal(inv, patient_id) {
   document.body.appendChild(ov);
 
   if (hasLineItems) {
-    const items = (inv.line_items || []).filter(i => i && i.name);
+    const items = _normalizedItems;
     const picker = document.getElementById("pLineItemPicker");
     if (picker && items.length > 0) {
-      const label = document.createElement("p");
-      label.textContent = "Select services being paid:";
-      label.style.cssText = "font-weight:600;font-size:13px;margin:0 0 8px 0;color:#374151;";
-      picker.appendChild(label);
       const selected = new Set();
       items.forEach((item, i) => {
         const row = document.createElement("div");
         row.style.cssText = "display:flex;align-items:center;gap:10px;padding:8px;border-radius:6px;cursor:pointer;margin-bottom:4px;background:#fff;border:1px solid #e5e7eb;";
-        row.innerHTML = `<input type="checkbox" style="width:16px;height:16px;cursor:pointer;pointer-events:none;"><span style="flex:1;font-weight:600;font-size:13px;">${item.name}</span><span style="font-size:13px;color:#374151;">PKR ${Number(item.cost||0).toLocaleString()}</span>`;
+        row.innerHTML = `<input type="checkbox" style="width:16px;height:16px;cursor:pointer;pointer-events:none;"><span style="flex:1;font-weight:600;font-size:13px;">${escapeHtml(item.name)}</span><span style="font-size:13px;color:#374151;">PKR ${Number(item.cost||0).toLocaleString()}</span>`;
         row.addEventListener("click", () => {
           const cb = row.querySelector("input");
           if (selected.has(i)) {
@@ -1170,7 +1149,6 @@ function openPaymentModal(inv, patient_id) {
       });
     }
   }
-
 
   const amtInput = ov.querySelector("#pAmount");
   const hintEl = ov.querySelector("#pRemainingHint");
