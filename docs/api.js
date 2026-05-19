@@ -58,7 +58,8 @@ function mapInvoiceSnapshot(s) {
     lab_cost: Number(d.lab_cost || 0),
     notes: d.notes ?? "",
     procedure: d.procedure ?? "",
-    status: String(d.status || "unpaid").toLowerCase()
+    status: String(d.status || "unpaid").toLowerCase(),
+    line_items: Array.isArray(d.line_items) ? d.line_items : undefined
   };
 }
 
@@ -249,7 +250,6 @@ window.api = {
       const snap = await getDocs(qy);
       const invoices = snap.docs.map((s) => mapInvoiceSnapshot(s));
       invoices.sort((a, b) => Number(b.created_at || 0) - Number(a.created_at || 0));
-      /** attach payment-derived status consistency */
       const paySnap = await getDocs(collection(db, "payments"));
       const pays = paySnap.docs.map(mapPaymentSnap);
       const byInv = pays.reduce((m, p) => {
@@ -275,7 +275,9 @@ window.api = {
         cost: Number(invPayload.cost || 0),
         status: (invPayload.status || "unpaid").toLowerCase(),
         notes: invPayload.notes ?? "",
-        ...(Array.isArray(invPayload.line_items) && invPayload.line_items.length > 0 ? { line_items: invPayload.line_items } : {})
+        ...(Array.isArray(invPayload.line_items) && invPayload.line_items.length > 0
+          ? { line_items: invPayload.line_items }
+          : {})
       });
       const merged = mapInvoiceSnapshot(await getDoc(ref));
       return { ok: true, invoice: merged };
@@ -295,6 +297,12 @@ window.api = {
             ? Timestamp.fromMillis(Number(inv.created_at))
             : Timestamp.fromMillis(Date.now())
       });
+      // Save line_items if present, explicitly remove if not (so edits that clear services work)
+      if (Array.isArray(inv.line_items) && inv.line_items.length > 0) {
+        patch.line_items = inv.line_items;
+      } else {
+        patch.line_items = null;
+      }
       await updateDoc(ref, patch);
       await refreshInvoicePaymentStatus(idStr);
     },
@@ -344,9 +352,6 @@ window.api = {
       else snap = await getDocs(collection(db, "payments"));
 
       let rows = snap.docs.map(mapPaymentSnap);
-      if (invoice_id === null && patient_id === null) return rows.sort((a, b) =>
-        String(a.date).localeCompare(String(b.date))
-      );
       rows.sort((a, b) => String(a.date).localeCompare(String(b.date)));
       return rows;
     },
@@ -366,7 +371,9 @@ window.api = {
 
     async delete(id, invoice_id) {
       await deleteDoc(doc(db, "payments", String(id)));
-      await refreshInvoicePaymentStatus(invoice_id);
+      if (invoice_id != null && invoice_id !== "") {
+        await refreshInvoicePaymentStatus(String(invoice_id));
+      }
     },
 
     async all() {
