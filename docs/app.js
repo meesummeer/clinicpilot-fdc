@@ -1085,7 +1085,12 @@ function openPaymentModal(inv, patient_id) {
   const linked = billingDataCache.payments.filter((p) => String(p.invoice_id) === String(inv.id));
   const paidPrior = linked.reduce((s, p) => s + Number(p.amount || 0), 0);
   const outstanding = Math.max(0, totalCost - paidPrior);
-  const _normalizedItems = normalizeInvoiceLineItems(inv) || [];
+  let _normalizedItems = normalizeInvoiceLineItems(inv) || [];
+  if (_normalizedItems.length === 0 && inv.procedure && inv.procedure.includes(",")) {
+    const names = inv.procedure.split(",").map(s => s.trim()).filter(Boolean);
+    const each = Number(inv.cost || 0) / (names.length || 1);
+    _normalizedItems = names.map(name => ({ name, cost: each }));
+  }
   const hasLineItems = _normalizedItems.length > 0;
   const lineItemPickerHtml = hasLineItems
     ? `<div id="pLineItemPicker" style="border:1px solid #e2e8f0;border-radius:8px;padding:8px;margin-bottom:12px;"><p style="font-weight:600;font-size:13px;margin:0 0 8px 0;color:#374151;">Select services being paid:</p></div>`
