@@ -125,10 +125,23 @@ function buildCustomerCopyInvoiceHtml(inv, paid, due) {
       : (() => {
           const proc = String(inv.procedure ?? "").trim() || "—";
           const total = Number(inv.cost || 0);
+          let invStatusLabel = "Unpaid";
+          let invStatusColor = "#c62828";
+          if (paidN <= payTol) {
+            invStatusLabel = "Unpaid";
+            invStatusColor = "#c62828";
+          } else if (paidN + payTol >= costN) {
+            invStatusLabel = "Paid";
+            invStatusColor = "#2e7d32";
+          } else {
+            invStatusLabel = "Partial";
+            invStatusColor = "#e65100";
+          }
           const row = (name, amt) => `
       <tr style="background:#f9f9f9;">
         <td style="padding:10px 12px;font-weight:600;font-size:13px;">${name}</td>
         <td style="padding:10px 12px;text-align:right;font-size:13px;">PKR ${Number(amt).toLocaleString()}</td>
+        <td style="padding:10px 12px;text-align:center;font-size:13px;font-weight:600;color:${invStatusColor};">${invStatusLabel}</td>
       </tr>`;
           if (proc.includes(",")) {
             const names = proc.split(",").map((s) => s.trim()).filter(Boolean);
@@ -1092,7 +1105,7 @@ function openPaymentModal(inv, patient_id) {
   const outstanding = Math.max(0, totalCost - paidPrior);
   const hasLineItems = inv.line_items && inv.line_items.length > 0;
   const lineItemPickerHtml = hasLineItems
-    ? `<div id="pLineItemPicker" style="border:1px solid #e2e8f0;border-radius:8px;padding:8px;margin-bottom:12px;"></div>`
+    ? `<div id="pLineItemPicker" style="border:1px solid #e2e8f0;border-radius:8px;padding:8px;margin-bottom:12px;"><p style="font-weight:600;font-size:13px;margin:0 0 8px 0;color:#374151;">Select services being paid:</p></div>`
     : "";
 
   const ov = document.createElement("div");
@@ -1123,49 +1136,41 @@ function openPaymentModal(inv, patient_id) {
   </div>`;
   document.body.appendChild(ov);
 
-  setTimeout(() => {
-    if (hasLineItems) {
-      const items = normalizeInvoiceLineItems(inv) || [];
-      const picker = document.getElementById("pLineItemPicker");
-      if (!picker) return;
-      const pickerLabel = document.createElement("p");
-      pickerLabel.style.cssText = "font-weight:600;margin-bottom:6px;";
-      pickerLabel.textContent = "Select services being paid:";
-      picker.appendChild(pickerLabel);
+  if (hasLineItems) {
+    const items = (inv.line_items || []).filter(i => i && i.name);
+    const picker = document.getElementById("pLineItemPicker");
+    if (picker && items.length > 0) {
+      const label = document.createElement("p");
+      label.textContent = "Select services being paid:";
+      label.style.cssText = "font-weight:600;font-size:13px;margin:0 0 8px 0;color:#374151;";
+      picker.appendChild(label);
       const selected = new Set();
-      const syncAmountFromSelection = () => {
-        const sum = [...selected].reduce((s, i) => s + Number(items[i].cost || 0), 0);
-        if (amtInput) amtInput.value = sum > 0 ? String(sum) : "0";
-        updateRemainingHint();
-      };
       items.forEach((item, i) => {
-        const row = document.createElement("button");
-        row.type = "button";
-        const cb = document.createElement("input");
-        cb.type = "checkbox";
-        cb.style.cssText = "pointer-events:none;margin:0;flex-shrink:0;";
-        const nameEl = document.createElement("span");
-        nameEl.style.cssText = "flex:1;font-weight:600;text-align:left;";
-        nameEl.textContent = item.name;
-        const costEl = document.createElement("span");
-        costEl.style.cssText = "font-size:0.875rem;color:#374151;white-space:nowrap;";
-        costEl.textContent = pkMoney(item.cost);
-        row.style.cssText =
-          "display:flex;align-items:center;gap:10px;width:100%;padding:10px 12px;border:2px solid #e5e7eb;border-radius:8px;background:#fff;cursor:pointer;font:inherit;";
-        row.append(cb, nameEl, costEl);
-        row.onclick = () => {
-          if (selected.has(i)) selected.delete(i);
-          else selected.add(i);
-          const on = selected.has(i);
-          cb.checked = on;
-          row.style.background = on ? "#e8f5e9" : "#fff";
-          row.style.borderColor = on ? "#009688" : "#e5e7eb";
-          syncAmountFromSelection();
-        };
+        const row = document.createElement("div");
+        row.style.cssText = "display:flex;align-items:center;gap:10px;padding:8px;border-radius:6px;cursor:pointer;margin-bottom:4px;background:#fff;border:1px solid #e5e7eb;";
+        row.innerHTML = `<input type="checkbox" style="width:16px;height:16px;cursor:pointer;pointer-events:none;"><span style="flex:1;font-weight:600;font-size:13px;">${item.name}</span><span style="font-size:13px;color:#374151;">PKR ${Number(item.cost||0).toLocaleString()}</span>`;
+        row.addEventListener("click", () => {
+          const cb = row.querySelector("input");
+          if (selected.has(i)) {
+            selected.delete(i);
+            row.style.background = "#fff";
+            row.style.borderColor = "#e5e7eb";
+            cb.checked = false;
+          } else {
+            selected.add(i);
+            row.style.background = "#f0fdf4";
+            row.style.borderColor = "#16a34a";
+            cb.checked = true;
+          }
+          const sum = [...selected].reduce((s, idx) => s + Number(items[idx].cost || 0), 0);
+          const amtEl = document.getElementById("pAmount");
+          if (amtEl) { amtEl.value = sum > 0 ? String(sum) : "0"; amtEl.dispatchEvent(new Event("input")); }
+        });
         picker.appendChild(row);
       });
     }
-  }, 0);
+  }
+
 
   const amtInput = ov.querySelector("#pAmount");
   const hintEl = ov.querySelector("#pRemainingHint");
