@@ -913,7 +913,81 @@ window.addEventListener("DOMContentLoaded", async () => {
   $$("#patientTabs .tab").forEach((t) => (t.onclick = () => openTab(t.dataset.tab)));
   $("#billingMonth").onchange = renderClinicBilling;
   $("#billingAllTime").onclick = () => { billingAllTime = !billingAllTime; const btn = $("#billingAllTime"); btn.classList.toggle("active", billingAllTime); btn.textContent = billingAllTime ? "All Time (on)" : "All Time"; renderClinicBilling(); };
-  $("#downloadPdf").onclick = () => { const ph = $("#printPageHeader"); const ym = $("#billingMonth").value; if (ph) ph.textContent = billingAllTime ? "ClinicPilot — Faseeh Dental Clinic | All periods" : `ClinicPilot — Faseeh Dental Clinic | ${ym}`; window.print(); };
+  $("#downloadPdf").onclick = () => {
+    const ym = $("#billingMonth").value;
+    const label = billingAllTime ? "All Time" : ym;
+    const rows = Array.from($("#clinicBillingBody")?.querySelectorAll("tr") || []);
+    const invEl = $("#billingSummaryInvoiced")?.textContent || "—";
+    const colEl = $("#billingSummaryCollected")?.textContent || "—";
+    const outEl = $("#billingSummaryOutstanding")?.textContent || "—";
+
+    const rowsHtml = rows.map(tr => {
+      const cells = Array.from(tr.querySelectorAll("td")).map(td => `<td style="padding:8px 10px;border-bottom:1px solid #e5e7eb;font-size:12px;">${td.textContent}</td>`);
+      return `<tr>${cells.join("")}</tr>`;
+    }).join("");
+
+    const html = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Billing Report — ${label}</title>
+  <style>
+    body { font-family: Arial, sans-serif; color: #111; margin: 0; padding: 32px; }
+    .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 24px; }
+    .clinic-name { font-size: 20px; font-weight: 700; color: #2d3748; }
+    .clinic-sub { font-size: 12px; color: #6b7280; margin-top: 2px; }
+    .report-title { font-size: 14px; font-weight: 600; color: #374151; text-align: right; }
+    .report-period { font-size: 12px; color: #6b7280; text-align: right; }
+    hr { border: none; border-top: 2px solid #009688; margin: 0 0 20px; }
+    .kpis { display: flex; gap: 16px; margin-bottom: 24px; }
+    .kpi { flex: 1; background: #f8fafc; border: 1px solid #e5e7eb; border-radius: 8px; padding: 12px 16px; }
+    .kpi-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #6b7280; }
+    .kpi-value { font-size: 20px; font-weight: 700; margin-top: 4px; }
+    table { width: 100%; border-collapse: collapse; }
+    thead tr { background: #2d3748; color: white; }
+    thead th { padding: 10px; text-align: left; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; }
+    tbody tr:nth-child(even) { background: #f8fafc; }
+    .footer { margin-top: 24px; font-size: 10px; color: #9ca3af; text-align: center; }
+    @media print { body { padding: 16px; } }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div>
+      <div class="clinic-name">Faseeh Dental Clinic</div>
+      <div class="clinic-sub">Dr. Faseeh Ur Rehman | BDS | RDS</div>
+      <div class="clinic-sub">+923211507943 | faseehdentalclinic@gmail.com</div>
+    </div>
+    <div>
+      <div class="report-title">BILLING REPORT</div>
+      <div class="report-period">Period: ${label}</div>
+      <div class="report-period">Generated: ${new Date().toLocaleDateString("en-GB")}</div>
+    </div>
+  </div>
+  <hr>
+  <div class="kpis">
+    <div class="kpi"><div class="kpi-label">Total Invoiced</div><div class="kpi-value">PKR ${invEl}</div></div>
+    <div class="kpi"><div class="kpi-label">Total Collected</div><div class="kpi-value">PKR ${colEl}</div></div>
+    <div class="kpi"><div class="kpi-label">Outstanding</div><div class="kpi-value">PKR ${outEl}</div></div>
+  </div>
+  <table>
+    <thead>
+      <tr>
+        <th>Date</th><th>MR No</th><th>Patient Name</th><th>Procedure</th>
+        <th>Invoice Total</th><th>Paid</th><th>Due</th><th>Status</th>
+      </tr>
+    </thead>
+    <tbody>${rowsHtml}</tbody>
+  </table>
+  <div class="footer">Powered by CyberHealth Solutions | Meesum Mir — Generated ${new Date().toLocaleString("en-GB")}</div>
+  <script>window.onload = () => { window.print(); }<\/script>
+</body>
+</html>`;
+
+    const win = window.open("", "_blank");
+    win.document.write(html);
+    win.document.close();
+  };
   $("#backupDataBtn").onclick = async () => { try { const res = await withLoading(() => window.api.patients.syncSheets()); if (res?.ok === false) throw new Error(res.error || "Backup failed"); window.alert(typeof res === "object" && res !== null ? JSON.stringify(res) : String(res ?? "Backup completed.")); } catch (e) { window.alert(`Backup failed: ${e.message || String(e)}`); } };
   $("#deleteAllPatients").onclick = async () => { if (!confirm("Delete ALL patients? This cannot be undone.")) return; await withLoading(() => window.api.patients.deleteAll()); showToast("All patients deleted"); await refreshPatientsCache(); renderPatientList(); };
   $("#editPatient").onclick = async () => { if (!currentPatient) return; const p = await withLoading(() => window.api.patients.get(currentPatient.id || currentPatient.external_id)); openDrawer("patient", p || currentPatient); };
