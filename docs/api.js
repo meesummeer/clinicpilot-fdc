@@ -74,10 +74,12 @@ function finalizeInvoiceRow(inv, paymentsForInv) {
       : paymentsForInv.reduce((s, p) => s + Number(p.amount || 0), 0);
   if (paid == null) return inv;
   const cost = Number(inv.cost || 0);
+  const discount = Number(inv.discount || 0);
+  const netCost = Math.max(0, cost - discount);
   let st = inv.status || "unpaid";
   const tol = 1e-6;
   if (paid <= tol) st = "unpaid";
-  else if (paid + tol >= cost) st = "paid";
+  else if (paid + tol >= netCost) st = "paid";
   else st = "partial";
   return { ...inv, status: st };
 }
@@ -144,8 +146,10 @@ async function refreshInvoicePaymentStatus(invoiceDocId) {
   if (!invSnap.exists) return;
   const inv = invSnap.data();
   const cost = Number(inv.cost || 0);
+  const discount = Number(inv.discount || 0);
+  const netCost = Math.max(0, cost - discount);
   const paid = await sumPaymentsForInvoice(idStr);
-  const nextStatus = deriveStatusFromTotals(cost, paid);
+  const nextStatus = deriveStatusFromTotals(netCost, paid);
   await updateDoc(invRef, { status: nextStatus });
 }
 
@@ -275,6 +279,7 @@ window.api = {
         cost: Number(invPayload.cost || 0),
         status: (invPayload.status || "unpaid").toLowerCase(),
         notes: invPayload.notes ?? "",
+        discount: Number(invPayload.discount || 0),
         ...(Array.isArray(invPayload.line_items) && invPayload.line_items.length > 0
           ? { line_items: invPayload.line_items }
           : {})
@@ -291,6 +296,7 @@ window.api = {
         lab_cost: Number(inv.lab_cost ?? 0),
         cost: Number(inv.cost ?? 0),
         notes: inv.notes ?? "",
+        discount: Number(inv.discount ?? 0),
         patient_id: inv.patient_id != null ? String(inv.patient_id) : undefined,
         created_at:
           inv.created_at != null

@@ -462,13 +462,13 @@ function paintBillingInvoiceCards() {
     const invPayments = payments.filter((p) => String(p.invoice_id) === String(inv.id));
     const paid = invPayments.reduce((s, p) => s + Number(p.amount || 0), 0);
     const total = Number(inv.cost || 0);
-    const due = Math.max(0, total - paid);
+    const discountN = Number(inv.discount || 0);
+    const due = Math.max(0, total - discountN - paid);
     const card = document.createElement("div"); card.className = "invoice-block";
     const synced = !inv.__optimistic;
     const notesHtml = inv.notes ? `<p class="patientSmall invoice-notes-line" style="margin:6px 0 0;line-height:1.4">${escapeHtml(inv.notes)}</p>` : "";
     const lineItemsCard = formatLineItemsCardHtml(inv);
     const invoiceTitle = inv.line_items && inv.line_items.length > 0 ? "Multi-Service Invoice" : escapeHtml(inv.procedure || "");
-    const discountN = Number(inv.discount || 0);
     const discountBadge = discountN > 0 ? `<span style="font-size:11px;color:#e65100;margin-left:6px;">-PKR ${discountN.toLocaleString()} disc</span>` : "";
     const actionsHtml = synced
       ? `<div style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap;"><button type="button" class="btn btn-primary btn-small addPay">+ Payment</button><button type="button" class="btn btn-secondary btn-small editInv">Edit</button><button type="button" class="btn btn-danger btn-small delInv">Delete</button><button type="button" class="btn btn-secondary btn-small billing-customer-copy">Customer Copy</button></div>`
@@ -607,7 +607,7 @@ async function renderClinicBilling() {
   const rows = filteredInvoices.map((inv) => {
     const invPays = invoicePaymentsFor(inv);
     const paid = invPays.reduce((s, p) => s + Number(p.amount || 0), 0);
-    const total = Number(inv.cost || 0); const due = Math.max(0, total - paid); const tol = 1e-6;
+    const total = Number(inv.cost || 0); const discount = Number(inv.discount || 0); const due = Math.max(0, total - discount - paid); const tol = 1e-6;
     const status = paid <= tol ? "unpaid" : paid + tol >= total ? "paid" : "partial";
     const pidStr = String(inv.patient_id ?? "").trim();
     return { sortTs: inv.created_at ? Number(inv.created_at) : 0, dateLabel: displayDateTs(inv.created_at), mr: pidStr, name: pMap.get(pidStr) || "—", procedure: inv.procedure || "", total, paid, due, status };
@@ -657,7 +657,8 @@ function openPaymentModal(inv, patient_id) {
   const totalCost = Number(inv.cost || 0);
   const linked = billingDataCache.payments.filter((p) => String(p.invoice_id) === String(inv.id));
   const paidPrior = linked.reduce((s, p) => s + Number(p.amount || 0), 0);
-  const outstanding = Math.max(0, totalCost - paidPrior);
+  const discountAmt = Number(inv.discount || 0);
+  const outstanding = Math.max(0, totalCost - discountAmt - paidPrior);
   let _normalizedItems = normalizeInvoiceLineItems(inv) || [];
   if (_normalizedItems.length === 0 && inv.procedure && inv.procedure.includes(",")) {
     const names = inv.procedure.split(",").map(s => s.trim()).filter(Boolean);
