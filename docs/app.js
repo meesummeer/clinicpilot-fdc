@@ -55,9 +55,10 @@ function runInvoiceCustomerPdfPrint(inv, paid, due) {
   let cleaned = false;
   const prevAfterPrint = window.onafterprint;
   const cleanup = () => {
-    if (cleaned) return; cleaned = true; sheet.remove(); window.onafterprint = prevAfterPrint || null;
+    if (cleaned) return; cleaned = true; sheet.remove(); document.body.classList.remove("printing-invoice"); window.onafterprint = prevAfterPrint || null;
   };
   window.onafterprint = () => cleanup();
+  document.body.classList.add("printing-invoice");
   window.print();
   setTimeout(cleanup, 1000);
 }
@@ -541,7 +542,7 @@ async function renderPatientBilling() {
           <datalist id="procList">${billingProcedureOptionTags()}</datalist>
           <input id="bCost" type="number" placeholder="Total Cost" style="max-width:120px;">
           <input id="bDiscount" type="number" placeholder="Discount" style="max-width:100px;">
-          <button type="button" id="bInvoiceStatus" class="btn">Unpaid</button>
+          <input id="bPaidAmount" type="number" placeholder="Paid Now" style="max-width:110px;">
           <button type="button" id="addInvoiceBtn" class="btn btn-primary">+ Add Invoice</button>
         </div>
         <textarea id="bNotes" class="billing-notes" placeholder="Treatment notes, observations..." rows="3"></textarea>
@@ -549,7 +550,6 @@ async function renderPatientBilling() {
       <div id="billingList"></div>
     </div>`;
 
-  const getInvoicePaid = bindInvoicePaidToggle($("#bInvoiceStatus"));
   const addInvBtn = $("#addInvoiceBtn");
   const multiBtn = document.createElement("button");
   multiBtn.className = "btn"; multiBtn.textContent = "+ Multi-Service"; multiBtn.style.marginLeft = "8px";
@@ -569,7 +569,16 @@ async function renderPatientBilling() {
     paintBillingInvoiceCards(); showSavingPeek();
     try {
       const invRes = await window.api.invoices.add({ patient_id: pid, procedure, cost: costVal, lab_cost: 0, discount: discountVal, created_at: createdAtMs, notes });
-      if (getInvoicePaid()) await window.api.payments.add({ invoice_id: invRes.invoice.id, patient_id: pid, date: localYMD(new Date()), amount: costVal, payment_mode: "Cash" });
+      const paidNow = Number($("#bPaidAmount")?.value || 0);
+      if (paidNow > 0) {
+        await window.api.payments.add({
+          invoice_id: invRes.invoice.id,
+          patient_id: pid,
+          date: localYMD(new Date()),
+          amount: paidNow,
+          payment_mode: "Cash"
+        });
+      }
       showToast("Invoice added"); await reloadPatientBillingQuiet();
     } catch (e) { billingDataCache = { pid, invoices: snap.invoices, payments: snap.payments }; paintBillingInvoiceCards(); showToast(e.message || "Could not save invoice", "error"); }
     finally { hideSavingPeek(); }
@@ -930,9 +939,10 @@ function openMultiServiceModal(pid, onSave) {
       <div id="msTotal" style="text-align:right;font-weight:700;font-size:15px;margin-bottom:12px;">Total: PKR 0</div>
       <label>Discount (PKR)</label>
       <input id="msDiscount" type="number" placeholder="0" style="width:100%;padding:8px;border:1px solid #ccd;border-radius:8px;margin-bottom:12px;" min="0">
+      <label>Paid Now (PKR)</label>
+      <input id="msPaidAmount" type="number" placeholder="0" style="width:100%;padding:8px;border:1px solid #ccd;border-radius:8px;margin-bottom:12px;" min="0">
       <label>Notes</label>
       <textarea id="msNotes" style="width:100%;padding:8px;border:1px solid #ccd;border-radius:8px;min-height:60px;margin-bottom:16px;" placeholder="Treatment notes..."></textarea>
-      <div style="margin-bottom:12px;"><button type="button" id="msInvoiceStatus" class="btn">Unpaid</button></div>
       <div style="display:flex;gap:8px;justify-content:flex-end;">
         <button id="msCancel" class="btn">Cancel</button>
         <button id="msSave" class="btn primary">Save Invoice</button>
@@ -940,7 +950,6 @@ function openMultiServiceModal(pid, onSave) {
     </div>`;
   document.body.appendChild(ov);
 
-  const getMsInvoicePaid = bindInvoicePaidToggle(ov.querySelector("#msInvoiceStatus"));
   const lineItemsDiv = ov.querySelector("#msLineItems"); const totalDiv = ov.querySelector("#msTotal");
 
   function addRow(name = "", cost = "") {
@@ -972,7 +981,16 @@ function openMultiServiceModal(pid, onSave) {
     const dateStr = ov.querySelector("#msDate").value; const notes = ov.querySelector("#msNotes").value;
     const btn = ov.querySelector("#msSave"); btn.disabled = true; btn.textContent = "Saving...";
     const invRes = await window.api.invoices.add({ patient_id: pid, procedure: items.map((i) => i.name).join(", "), cost: total, lab_cost: 0, discount: discountVal, notes, created_at: new Date(dateStr + "T00:00:00").getTime(), line_items: items });
-    if (getMsInvoicePaid()) await window.api.payments.add({ invoice_id: invRes.invoice.id, patient_id: pid, date: localYMD(new Date()), amount: total, payment_mode: "Cash" });
+    const paidNow = Number(ov.querySelector("#msPaidAmount")?.value || 0);
+    if (paidNow > 0) {
+      await window.api.payments.add({
+        invoice_id: invRes.invoice.id,
+        patient_id: pid,
+        date: localYMD(new Date()),
+        amount: paidNow,
+        payment_mode: "Cash"
+      });
+    }
     ov.remove(); if (onSave) onSave();
   };
 }

@@ -1444,10 +1444,11 @@ body {
 }
 
 @media print {
-  body > *:not(#invoice-print-area) {
+  /* When printing patient invoice copy */
+  body.printing-invoice > *:not(#invoice-print-area) {
     display: none !important;
   }
-  #invoice-print-area {
+  body.printing-invoice #invoice-print-area {
     display: block !important;
     position: fixed !important;
     top: 0 !important;
@@ -1457,8 +1458,16 @@ body {
     background: white !important;
     z-index: 99999 !important;
   }
-  #invoice-print-area * {
+  body.printing-invoice #invoice-print-area * {
     display: revert !important;
     visibility: visible !important;
+  }
+  /* When printing billings report — print everything normally */
+  body:not(.printing-invoice) .sidebar,
+  body:not(.printing-invoice) .topbar {
+    display: none !important;
+  }
+  body:not(.printing-invoice) .main {
+    margin-left: 0 !important;
   }
 }
