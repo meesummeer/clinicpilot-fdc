@@ -536,13 +536,18 @@ async function renderPatientBilling() {
   c.innerHTML = `
     <div class="invoice-block">
       <div class="billing-add-form">
-        <div class="billing-add-row">
+        <div class="billing-add-row" style="background:var(--card);padding:12px;border-radius:var(--radius);border:1px solid var(--border);">
           <input id="bDate" type="date" value="${d}">
           <input id="bProcedure" type="text" class="billing-select" list="procList" placeholder="Select or type procedure..." autocomplete="off">
           <datalist id="procList">${billingProcedureOptionTags()}</datalist>
           <input id="bCost" type="number" placeholder="Total Cost" style="max-width:120px;">
-          <input id="bDiscount" type="number" placeholder="Discount" style="max-width:100px;">
-          <input id="bPaidAmount" type="number" placeholder="Paid Now" style="max-width:110px;">
+          <input id="bDiscount" type="number" placeholder="Discount" style="max-width:90px;">
+          <input id="bPaidAmount" type="number" placeholder="Paid Now" style="max-width:100px;">
+          <select id="bPayMode" style="min-height:44px;padding:0 10px;border:1px solid var(--border);border-radius:var(--radius);font:inherit;background:var(--card);max-width:110px;">
+            <option value="Cash">Cash</option>
+            <option value="Online">Online</option>
+            <option value="Card">Card</option>
+          </select>
           <button type="button" id="addInvoiceBtn" class="btn btn-primary">+ Add Invoice</button>
         </div>
         <textarea id="bNotes" class="billing-notes" placeholder="Treatment notes, observations..." rows="3"></textarea>
@@ -576,7 +581,7 @@ async function renderPatientBilling() {
           patient_id: pid,
           date: localYMD(new Date()),
           amount: paidNow,
-          payment_mode: "Cash"
+          payment_mode: $("#bPayMode")?.value || "Cash"
         });
       }
       showToast("Invoice added"); await reloadPatientBillingQuiet();
