@@ -621,7 +621,7 @@ async function renderClinicBilling() {
   const rows = filteredInvoices.map((inv) => {
     const invPays = invoicePaymentsFor(inv);
     const paid = invPays.reduce((s, p) => s + Number(p.amount || 0), 0);
-    const total = Number(inv.cost || 0); const discount = Number(inv.discount || 0); const due = Math.max(0, total - discount - paid); const tol = 1e-6;
+    const grossTotal = Number(inv.cost || 0); const discount = Number(inv.discount || 0); const total = Math.max(0, grossTotal - discount); const due = Math.max(0, total - paid); const tol = 1e-6;
     const status = paid <= tol ? "unpaid" : paid + tol >= total ? "paid" : "partial";
     const pidStr = String(inv.patient_id ?? "").trim();
     return { sortTs: inv.created_at ? Number(inv.created_at) : 0, dateLabel: displayDateTs(inv.created_at), mr: pidStr, name: pMap.get(pidStr) || "—", procedure: inv.procedure || "", total, paid, due, status };
