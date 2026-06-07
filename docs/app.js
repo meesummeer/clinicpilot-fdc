@@ -124,7 +124,7 @@ function buildCustomerCopyInvoiceHtml(inv, paid, due) {
   return `
 <div id="invoice-print-area" style="font-family: Arial, sans-serif; background: white; padding: 40px; max-width: 700px; margin: 0 auto; color: #222;">
   <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:20px;">
-    <div><img src="./fdc-logo.png" style="height:70px; width:auto;"></div>
+    <div><img src="/fdc-logo.png" style="height:70px; width:auto;"></div>
     <div style="text-align:right;">
       <div style="font-size:36px; font-weight:900; color:#2d3748; letter-spacing:2px;">INVOICE</div>
       <div style="font-size:16px; color:#666;"># ${invoiceId}</div>
