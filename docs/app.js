@@ -124,7 +124,7 @@ function buildCustomerCopyInvoiceHtml(inv, paid, due) {
   return `
 <div id="invoice-print-area" style="font-family: Arial, sans-serif; background: white; padding: 40px; max-width: 700px; margin: 0 auto; color: #222;">
   <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:20px;">
-    <div><img src="/clinicpilot-fdc/fdc-logo.png" style="height:70px; width:auto;"></div>
+    <div><img src="./fdc-logo.png" style="height:70px; width:auto;"></div>
     <div style="text-align:right;">
       <div style="font-size:36px; font-weight:900; color:#2d3748; letter-spacing:2px;">INVOICE</div>
       <div style="font-size:16px; color:#666;"># ${invoiceId}</div>
@@ -908,7 +908,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   const m = new Date(); $("#billingMonth").value = `${m.getFullYear()}-${String(m.getMonth() + 1).padStart(2, "0")}`;
   $$(".nav-btn[data-nav]").forEach((el) => (el.onclick = () => setActiveNav(el.dataset.nav)));
   const signOutBtn = document.querySelector(".sign-out-btn");
-  if (signOutBtn) { signOutBtn.onclick = () => { localStorage.removeItem("cp_token"); window.location.href = "https://meesummeer.github.io/clinicpilot-fdc/login.html"; }; }
+  if (signOutBtn) { signOutBtn.onclick = () => { localStorage.removeItem("cp_token"); window.location.href = "https://app.faseehdentalclinic.com/login.html"; }; }
   $("#prevMonth").onclick = () => { currentMonth.setMonth(currentMonth.getMonth() - 1); drawCalendar(); };
   $("#nextMonth").onclick = () => { currentMonth.setMonth(currentMonth.getMonth() + 1); drawCalendar(); };
   $("#newPatient").onclick = () => openNewPatientModal(); $("#addAppt").onclick = () => openAddAppointmentModal();

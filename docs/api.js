@@ -4,7 +4,7 @@ import { Timestamp } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-f
 (function checkAuth() {
   const token = localStorage.getItem("cp_token");
   if (!token) {
-    window.location.href = "https://meesummeer.github.io/clinicpilot-fdc/login.html";
+    window.location.href = "https://app.faseehdentalclinic.com/login.html";
   }
 })();
 
@@ -478,7 +478,7 @@ window.api = {
   auth: {
     logout: () => {
       localStorage.removeItem("cp_token");
-      window.location.href = "https://meesummeer.github.io/clinicpilot-fdc/login.html";
+      window.location.href = "https://app.faseehdentalclinic.com/login.html";
     }
   }
 };
