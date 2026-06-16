@@ -121,17 +121,36 @@
               <span class="kpi-value" id="billingSummaryOutstanding">—</span>
             </div>
           </div>
-          <div class="card billing-table-card">
-            <div class="table-scroll">
-              <table class="billing-table">
-                <thead>
-                  <tr>
-                    <th>Date</th><th>MR No</th><th>Patient Name</th><th>Procedure</th>
-                    <th>Invoice Total</th><th>Paid</th><th>Due</th><th>Status</th>
-                  </tr>
-                </thead>
-                <tbody id="clinicBillingBody"></tbody>
-              </table>
+          <div class="card billing-table-card screen-only">
+            <div class="tabs" id="clinicBillingTabs">
+              <button type="button" class="tab active" data-billing-view="invoices">Invoices</button>
+              <button type="button" class="tab" data-billing-view="payments">Payments Received</button>
+            </div>
+            <div id="clinicBillingInvoicesPanel">
+              <div class="table-scroll">
+                <table class="billing-table">
+                  <thead>
+                    <tr>
+                      <th>Date</th><th>MR No</th><th>Patient Name</th><th>Procedure</th>
+                      <th>Invoice Total</th><th>Paid</th><th>Due</th><th>Status</th>
+                    </tr>
+                  </thead>
+                  <tbody id="clinicBillingBody"></tbody>
+                </table>
+              </div>
+            </div>
+            <div id="clinicBillingPaymentsPanel" class="hidden">
+              <div class="table-scroll">
+                <table class="billing-table">
+                  <thead>
+                    <tr>
+                      <th>Date</th><th>MR No</th><th>Patient Name</th><th>Procedure</th>
+                      <th>Amount</th><th>Mode</th><th>Invoice Status</th>
+                    </tr>
+                  </thead>
+                  <tbody id="clinicBillingPaymentsBody"></tbody>
+                </table>
+              </div>
             </div>
           </div>
         </section>
