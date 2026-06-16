@@ -7,6 +7,7 @@ let currentPatientKey = null;
 let cachedPatients = null;
 let allPatients = [];
 let billingAllTime = false;
+let clinicBillingView = "invoices";
 let billingDataCache = { pid: null, invoices: [], payments: [] };
 let savingPeekCount = 0;
 
@@ -342,6 +343,31 @@ function showToast(message, type = "success") {
 
 function localYMD(d) { return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; }
 
+function computeInvoiceTotals(inv, paymentsForInv = []) {
+  return window.api.billing.computeInvoiceTotals(inv, paymentsForInv);
+}
+
+function invoiceCreatedInPeriod(inv, ym, allTime) {
+  if (allTime) return true;
+  const d = inv.created_at ? localYMD(new Date(inv.created_at)) : "";
+  return ym ? d.startsWith(ym) : true;
+}
+
+function paymentInPeriod(p, ym, allTime) {
+  if (allTime) return true;
+  return ym ? String(p.date || "").startsWith(ym) : true;
+}
+
+function buildPaymentsByInvoice(payments) {
+  return (payments || []).reduce((m, p) => {
+    const key = String(p.invoice_id ?? "");
+    if (!key) return m;
+    if (!m.has(key)) m.set(key, []);
+    m.get(key).push(p);
+    return m;
+  }, new Map());
+}
+
 function bindInvoicePaidToggle(btn) {
   let isPaid = false;
   const sync = () => { btn.textContent = isPaid ? "Paid" : "Unpaid"; btn.style.background = isPaid ? "#2e7d32" : "#9e9e9e"; btn.style.borderColor = isPaid ? "#2e7d32" : "#9e9e9e"; btn.style.color = "#fff"; };
@@ -461,10 +487,8 @@ function paintBillingInvoiceCards() {
 
   invoices.forEach((inv) => {
     const invPayments = payments.filter((p) => String(p.invoice_id) === String(inv.id));
-    const paid = invPayments.reduce((s, p) => s + Number(p.amount || 0), 0);
-    const total = Number(inv.cost || 0);
+    const { paid, due, status } = computeInvoiceTotals(inv, invPayments);
     const discountN = Number(inv.discount || 0);
-    const due = Math.max(0, total - discountN - paid);
     const card = document.createElement("div"); card.className = "invoice-block";
     const synced = !inv.__optimistic;
     const notesHtml = inv.notes ? `<p class="patientSmall invoice-notes-line" style="margin:6px 0 0;line-height:1.4">${escapeHtml(inv.notes)}</p>` : "";
@@ -476,7 +500,7 @@ function paintBillingInvoiceCards() {
       : `<p class="patientSmall" style="margin-bottom:8px;">Saving invoice…</p>`;
 
     card.innerHTML = `
-      <div class="pane-head" style="margin-bottom:8px;"><b>${invoiceTitle}</b>${synced ? statusBadge(inv.status) : ""}${discountBadge}<span class="patientSmall">${displayDateTs(inv.created_at)}</span></div>
+      <div class="pane-head" style="margin-bottom:8px;"><b>${invoiceTitle}</b>${synced ? statusBadge(status) : ""}${discountBadge}<span class="patientSmall">${displayDateTs(inv.created_at)}</span></div>
       ${lineItemsCard}${notesHtml}
       <div style="display:flex;flex-wrap:wrap;gap:8px 10px;margin-bottom:8px;font-size:12px;">
         <span>Total: ${Number(inv.cost || 0).toLocaleString()}</span>
@@ -495,7 +519,7 @@ function paintBillingInvoiceCards() {
       </table>`;
 
     const tb = card.querySelector(".pay-tbody");
-    invPayments.sort((a, b) => String(a.date).localeCompare(String(b.date))).forEach((p) => {
+    invPayments.sort((a, b) => String(b.date).localeCompare(String(a.date))).forEach((p) => {
       const tr = document.createElement("tr");
       tr.innerHTML = `
         <td style="padding:4px 8px;border-bottom:1px solid #f1f5f9;">${displayDateYYYYMMDD(p.date)}</td>
@@ -612,37 +636,64 @@ async function renderClinicBilling() {
   const ym = monthEl?.value || "";
   const [invoices, payments, patients] = await withLoading(() => Promise.all([window.api.invoices.all(), window.api.payments.all(), window.api.patients.list()]));
   const pMap = buildBillingPatientLookup(patients);
-  const payByInvoice = (payments || []).reduce((m, p) => {
-    const raw = p.invoice_id; const num = Number(raw); const key = Number.isFinite(num) ? num : String(raw ?? "");
-    if (!m.has(key)) m.set(key, []); m.get(key).push(p); return m;
-  }, new Map());
-  const invoicePaymentsFor = (inv) => { const raw = inv.id; const num = Number(raw); const key = Number.isFinite(num) ? num : String(raw ?? ""); return payByInvoice.get(key) || []; };
-  const filteredInvoices = (invoices || []).filter((inv) => { if (billingAllTime) return true; const d = inv.created_at ? localYMD(new Date(inv.created_at)) : ""; return ym ? d.startsWith(ym) : true; });
-  const rows = filteredInvoices.map((inv) => {
-    const invPays = invoicePaymentsFor(inv);
-    const paid = invPays.reduce((s, p) => s + Number(p.amount || 0), 0);
-    const grossTotal = Number(inv.cost || 0); const discount = Number(inv.discount || 0); const total = Math.max(0, grossTotal - discount); const due = Math.max(0, total - paid); const tol = 1e-6;
-    const status = paid <= tol ? "unpaid" : paid + tol >= total ? "paid" : "partial";
+  const payByInvoice = buildPaymentsByInvoice(payments);
+  const invoicePaymentsFor = (inv) => payByInvoice.get(String(inv.id)) || [];
+  const invById = new Map((invoices || []).map((inv) => [String(inv.id), inv]));
+
+  let sumOutstandingGlobal = 0;
+  (invoices || []).forEach((inv) => {
+    sumOutstandingGlobal += computeInvoiceTotals(inv, invoicePaymentsFor(inv)).due;
+  });
+
+  const filteredInvoices = (invoices || []).filter((inv) => invoiceCreatedInPeriod(inv, ym, billingAllTime));
+  const invoiceRows = filteredInvoices.map((inv) => {
+    const { paid, netTotal, due, status } = computeInvoiceTotals(inv, invoicePaymentsFor(inv));
     const pidStr = String(inv.patient_id ?? "").trim();
-    return { sortTs: inv.created_at ? Number(inv.created_at) : 0, dateLabel: displayDateTs(inv.created_at), mr: pidStr, name: pMap.get(pidStr) || "—", procedure: inv.procedure || "", total, paid, due, status };
+    return { sortTs: inv.created_at ? Number(inv.created_at) : 0, dateLabel: displayDateTs(inv.created_at), mr: pidStr, name: pMap.get(pidStr) || "—", procedure: inv.procedure || "", total: netTotal, paid, due, status };
   }).sort((a, b) => b.sortTs - a.sortTs);
 
-  let sumInvoiced = 0; rows.forEach((r) => { sumInvoiced += r.total; });
-  const sumPaidOnMonthInvoices = rows.reduce((s, r) => s + r.paid, 0);
-  const sumCollected = sumPaidOnMonthInvoices; const sumOutstanding = sumInvoiced - sumPaidOnMonthInvoices;
+  const sumInvoiced = invoiceRows.reduce((s, r) => s + r.total, 0);
+  const periodPayments = (payments || []).filter((p) => paymentInPeriod(p, ym, billingAllTime));
+  const sumCollected = periodPayments.reduce((s, p) => s + Number(p.amount || 0), 0);
+
   const fmt = (n) => Number(n || 0).toLocaleString();
   const invEl = $("#billingSummaryInvoiced"); const colEl = $("#billingSummaryCollected"); const outEl = $("#billingSummaryOutstanding");
-  if (invEl) invEl.textContent = rows.length ? fmt(sumInvoiced) : "—";
-  if (colEl) colEl.textContent = rows.length ? fmt(sumCollected) : "—";
-  if (outEl) outEl.textContent = rows.length ? fmt(sumOutstanding) : "—";
-  const body = $("#clinicBillingBody"); if (!body) return;
-  body.innerHTML = "";
-  rows.forEach((r) => {
-    const tr = document.createElement("tr");
-    tr.innerHTML = `<td>${r.dateLabel}</td><td>${escapeHtml(r.mr)}</td><td>${escapeHtml(r.name)}</td><td>${escapeHtml(r.procedure)}</td><td>${r.total.toLocaleString()}</td><td>${r.paid.toLocaleString()}</td><td>${r.due.toLocaleString()}</td><td>${statusBadge(r.status)}</td>`;
-    body.appendChild(tr);
-  });
-  if (!rows.length) body.innerHTML = '<tr><td colspan="8" class="patientSmall">No billing records for selected period.</td></tr>';
+  if (invEl) invEl.textContent = (billingAllTime || invoiceRows.length) ? fmt(sumInvoiced) : "—";
+  if (colEl) colEl.textContent = (billingAllTime || periodPayments.length) ? fmt(sumCollected) : "—";
+  if (outEl) outEl.textContent = (invoices || []).length ? fmt(sumOutstandingGlobal) : "—";
+
+  const body = $("#clinicBillingBody");
+  if (body) {
+    body.innerHTML = "";
+    invoiceRows.forEach((r) => {
+      const tr = document.createElement("tr");
+      tr.innerHTML = `<td>${r.dateLabel}</td><td>${escapeHtml(r.mr)}</td><td>${escapeHtml(r.name)}</td><td>${escapeHtml(r.procedure)}</td><td>${r.total.toLocaleString()}</td><td>${r.paid.toLocaleString()}</td><td>${r.due.toLocaleString()}</td><td>${statusBadge(r.status)}</td>`;
+      body.appendChild(tr);
+    });
+    if (!invoiceRows.length) body.innerHTML = '<tr><td colspan="8" class="patientSmall">No billing records for selected period.</td></tr>';
+  }
+
+  const payBody = $("#clinicBillingPaymentsBody");
+  if (payBody) {
+    const paymentRows = periodPayments.map((p) => {
+      const inv = invById.get(String(p.invoice_id));
+      const { status } = inv ? computeInvoiceTotals(inv, invoicePaymentsFor(inv)) : { status: "unpaid" };
+      const pidStr = String(p.patient_id ?? inv?.patient_id ?? "").trim();
+      return { sortDate: String(p.date || ""), dateLabel: displayDateYYYYMMDD(p.date), mr: pidStr, name: pMap.get(pidStr) || "—", procedure: inv?.procedure || "—", amount: Number(p.amount || 0), mode: p.payment_mode || "—", status };
+    }).sort((a, b) => b.sortDate.localeCompare(a.sortDate));
+
+    payBody.innerHTML = "";
+    paymentRows.forEach((r) => {
+      const tr = document.createElement("tr");
+      tr.innerHTML = `<td>${r.dateLabel}</td><td>${escapeHtml(r.mr)}</td><td>${escapeHtml(r.name)}</td><td>${escapeHtml(r.procedure)}</td><td>${r.amount.toLocaleString()}</td><td>${escapeHtml(r.mode)}</td><td>${statusBadge(r.status)}</td>`;
+      payBody.appendChild(tr);
+    });
+    if (!paymentRows.length) payBody.innerHTML = '<tr><td colspan="7" class="patientSmall">No payments for selected period.</td></tr>';
+  }
+
+  $("#clinicBillingInvoicesPanel")?.classList.toggle("hidden", clinicBillingView !== "invoices");
+  $("#clinicBillingPaymentsPanel")?.classList.toggle("hidden", clinicBillingView !== "payments");
+  $$("#clinicBillingTabs .tab").forEach((t) => t.classList.toggle("active", t.dataset.billingView === clinicBillingView));
 }
 
 async function drawCalendar() {
@@ -670,9 +721,7 @@ async function drawCalendar() {
 function openPaymentModal(inv, patient_id) {
   const totalCost = Number(inv.cost || 0);
   const linked = billingDataCache.payments.filter((p) => String(p.invoice_id) === String(inv.id));
-  const paidPrior = linked.reduce((s, p) => s + Number(p.amount || 0), 0);
-  const discountAmt = Number(inv.discount || 0);
-  const outstanding = Math.max(0, totalCost - discountAmt - paidPrior);
+  const { due: outstanding } = computeInvoiceTotals(inv, linked);
   let _normalizedItems = normalizeInvoiceLineItems(inv) || [];
   if (_normalizedItems.length === 0 && inv.procedure && inv.procedure.includes(",")) {
     const names = inv.procedure.split(",").map(s => s.trim()).filter(Boolean);
@@ -918,6 +967,9 @@ window.addEventListener("DOMContentLoaded", async () => {
   $$("#patientTabs .tab").forEach((t) => (t.onclick = () => openTab(t.dataset.tab)));
   $("#billingMonth").onchange = renderClinicBilling;
   $("#billingAllTime").onclick = () => { billingAllTime = !billingAllTime; const btn = $("#billingAllTime"); btn.classList.toggle("active", billingAllTime); btn.textContent = billingAllTime ? "All Time (on)" : "All Time"; renderClinicBilling(); };
+  $$("#clinicBillingTabs .tab").forEach((t) => {
+    t.onclick = () => { clinicBillingView = t.dataset.billingView || "invoices"; renderClinicBilling(); };
+  });
   $("#downloadPdf").onclick = () => {
     const ym = $("#billingMonth").value;
     const label = billingAllTime ? "All Time" : ym;

@@ -56,32 +56,27 @@ function mapInvoiceSnapshot(s) {
     created_at: toMillis(d.created_at),
     cost: Number(d.cost || 0),
     lab_cost: Number(d.lab_cost || 0),
+    discount: Number(d.discount || 0),
     notes: d.notes ?? "",
     procedure: d.procedure ?? "",
-    status: String(d.status || "unpaid").toLowerCase(),
     line_items: Array.isArray(d.line_items) ? d.line_items : undefined
   };
 }
 
-function pruneUndefined(o) {
-  return Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined));
+function computeInvoiceTotals(inv, paymentsForInv = []) {
+  const paid = (paymentsForInv || []).reduce((s, p) => s + Number(p.amount || 0), 0);
+  const grossTotal = Number(inv.cost || 0);
+  const discount = Number(inv.discount || 0);
+  const netTotal = Math.max(0, grossTotal - discount);
+  const due = Math.max(0, netTotal - paid);
+  const tol = 1e-6;
+  const status = paid <= tol ? "unpaid" : paid + tol >= netTotal ? "paid" : "partial";
+  return { paid, netTotal, due, status };
 }
 
 function finalizeInvoiceRow(inv, paymentsForInv) {
-  const paid =
-    paymentsForInv == null
-      ? null
-      : paymentsForInv.reduce((s, p) => s + Number(p.amount || 0), 0);
-  if (paid == null) return inv;
-  const cost = Number(inv.cost || 0);
-  const discount = Number(inv.discount || 0);
-  const netCost = Math.max(0, cost - discount);
-  let st = inv.status || "unpaid";
-  const tol = 1e-6;
-  if (paid <= tol) st = "unpaid";
-  else if (paid + tol >= netCost) st = "paid";
-  else st = "partial";
-  return { ...inv, status: st };
+  const totals = computeInvoiceTotals(inv, paymentsForInv || []);
+  return { ...inv, ...totals };
 }
 
 function mapPaymentSnap(s) {
@@ -121,36 +116,8 @@ function mapApptSnap(s) {
   };
 }
 
-function deriveStatusFromTotals(cost, paid) {
-  const tol = 1e-6;
-  if (paid <= tol) return "unpaid";
-  if (paid + tol >= cost) return "paid";
-  return "partial";
-}
-
-async function sumPaymentsForInvoice(invoiceDocId) {
-  const idStr = String(invoiceDocId);
-  const qy = query(collection(db, "payments"), where("invoice_id", "==", idStr));
-  const snap = await getDocs(qy);
-  let sumPaid = 0;
-  snap.forEach((d) => {
-    sumPaid += Number(d.data().amount || 0);
-  });
-  return sumPaid;
-}
-
-async function refreshInvoicePaymentStatus(invoiceDocId) {
-  const idStr = String(invoiceDocId);
-  const invRef = doc(db, "invoices", idStr);
-  const invSnap = await getDoc(invRef);
-  if (!invSnap.exists) return;
-  const inv = invSnap.data();
-  const cost = Number(inv.cost || 0);
-  const discount = Number(inv.discount || 0);
-  const netCost = Math.max(0, cost - discount);
-  const paid = await sumPaymentsForInvoice(idStr);
-  const nextStatus = deriveStatusFromTotals(netCost, paid);
-  await updateDoc(invRef, { status: nextStatus });
+function pruneUndefined(o) {
+  return Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined));
 }
 
 async function nextPatientDocId() {
@@ -277,7 +244,6 @@ window.api = {
         procedure: invPayload.procedure ?? "",
         lab_cost: Number(invPayload.lab_cost || 0),
         cost: Number(invPayload.cost || 0),
-        status: (invPayload.status || "unpaid").toLowerCase(),
         notes: invPayload.notes ?? "",
         discount: Number(invPayload.discount || 0),
         ...(Array.isArray(invPayload.line_items) && invPayload.line_items.length > 0
@@ -310,7 +276,6 @@ window.api = {
         patch.line_items = null;
       }
       await updateDoc(ref, patch);
-      await refreshInvoicePaymentStatus(idStr);
     },
 
     async delete(id) {
@@ -370,16 +335,12 @@ window.api = {
         amount: Number(p.amount || 0),
         payment_mode: p.payment_mode || ""
       });
-      await refreshInvoicePaymentStatus(p.invoice_id);
       const s = await getDoc(ref);
       return { ok: true, payment: mapPaymentSnap(s) };
     },
 
-    async delete(id, invoice_id) {
+    async delete(id, _invoice_id) {
       await deleteDoc(doc(db, "payments", String(id)));
-      if (invoice_id != null && invoice_id !== "") {
-        await refreshInvoicePaymentStatus(String(invoice_id));
-      }
     },
 
     async all() {
@@ -480,6 +441,10 @@ window.api = {
       localStorage.removeItem("cp_token");
       window.location.href = "https://app.faseehdentalclinic.com/login.html";
     }
+  },
+
+  billing: {
+    computeInvoiceTotals
   }
 };
 
