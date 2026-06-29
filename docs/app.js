@@ -640,11 +640,6 @@ async function renderClinicBilling() {
   const invoicePaymentsFor = (inv) => payByInvoice.get(String(inv.id)) || [];
   const invById = new Map((invoices || []).map((inv) => [String(inv.id), inv]));
 
-  let sumOutstandingGlobal = 0;
-  (invoices || []).forEach((inv) => {
-    sumOutstandingGlobal += computeInvoiceTotals(inv, invoicePaymentsFor(inv)).due;
-  });
-
   const filteredInvoices = (invoices || []).filter((inv) => invoiceCreatedInPeriod(inv, ym, billingAllTime));
   const invoiceRows = filteredInvoices.map((inv) => {
     const { paid, netTotal, due, status } = computeInvoiceTotals(inv, invoicePaymentsFor(inv));
@@ -653,14 +648,21 @@ async function renderClinicBilling() {
   }).sort((a, b) => b.sortTs - a.sortTs);
 
   const sumInvoiced = invoiceRows.reduce((s, r) => s + r.total, 0);
+  const sumCollected = invoiceRows.reduce((s, r) => s + r.paid, 0);
+  const sumOutstanding = invoiceRows.reduce((s, r) => s + r.due, 0);
+  if (sumOutstanding > 0) {
+    console.log("[Billings Outstanding]", filteredInvoices.map((inv) => {
+      const { paid, due } = computeInvoiceTotals(inv, invoicePaymentsFor(inv));
+      return { id: inv.id, patient_id: inv.patient_id, cost: Number(inv.cost || 0), discount: Number(inv.discount || 0), paid, due };
+    }).filter((row) => row.due > 0));
+  }
   const periodPayments = (payments || []).filter((p) => paymentInPeriod(p, ym, billingAllTime));
-  const sumCollected = periodPayments.reduce((s, p) => s + Number(p.amount || 0), 0);
 
   const fmt = (n) => Number(n || 0).toLocaleString();
   const invEl = $("#billingSummaryInvoiced"); const colEl = $("#billingSummaryCollected"); const outEl = $("#billingSummaryOutstanding");
   if (invEl) invEl.textContent = (billingAllTime || invoiceRows.length) ? fmt(sumInvoiced) : "—";
-  if (colEl) colEl.textContent = (billingAllTime || periodPayments.length) ? fmt(sumCollected) : "—";
-  if (outEl) outEl.textContent = (invoices || []).length ? fmt(sumOutstandingGlobal) : "—";
+  if (colEl) colEl.textContent = (billingAllTime || invoiceRows.length) ? fmt(sumCollected) : "—";
+  if (outEl) outEl.textContent = (billingAllTime || invoiceRows.length) ? fmt(sumOutstanding) : "—";
 
   const body = $("#clinicBillingBody");
   if (body) {
