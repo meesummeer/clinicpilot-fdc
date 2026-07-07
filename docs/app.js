@@ -629,7 +629,8 @@ async function renderClinicBilling() {
 
   let sumInvoiced = 0; rows.forEach((r) => { sumInvoiced += r.total; });
   const sumPaidOnMonthInvoices = rows.reduce((s, r) => s + r.paid, 0);
-  const sumCollected = sumPaidOnMonthInvoices; const sumOutstanding = sumInvoiced - sumPaidOnMonthInvoices;
+  const sumCollected = (payments || []).filter((p) => billingAllTime ? true : (ym ? String(p.date || "").startsWith(ym) : true)).reduce((s, p) => s + Number(p.amount || 0), 0);
+  const sumOutstanding = sumInvoiced - sumPaidOnMonthInvoices;
   const fmt = (n) => Number(n || 0).toLocaleString();
   const invEl = $("#billingSummaryInvoiced"); const colEl = $("#billingSummaryCollected"); const outEl = $("#billingSummaryOutstanding");
   if (invEl) invEl.textContent = rows.length ? fmt(sumInvoiced) : "—";
