@@ -211,6 +211,7 @@ body {
 
 .workspace {
   padding: 20px 24px 28px;
+  overflow-y: auto;
 }
 
 .pane {
@@ -410,6 +411,12 @@ body {
   border: 1px solid var(--border);
   border-radius: var(--radius);
   font: inherit;
+}
+
+#patientBrowse {
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
 }
 
 .patient-list {
