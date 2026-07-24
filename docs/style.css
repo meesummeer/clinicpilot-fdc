@@ -186,8 +186,10 @@ body {
   margin-left: 220px;
   min-width: 0;
   height: 100vh;
-  overflow-y: auto;
+  overflow: hidden;
   background: var(--bg);
+  display: flex;
+  flex-direction: column;
 }
 
 .topbar {
@@ -211,6 +213,8 @@ body {
 
 .workspace {
   padding: 20px 24px 28px;
+  flex: 1;
+  min-height: 0;
   overflow-y: auto;
 }
 
@@ -416,9 +420,9 @@ body {
 #patientBrowse {
   overflow-y: auto;
   overflow-x: hidden;
-  height: calc(100vh - 180px);
   flex: 1;
   min-height: 0;
+  height: 100%;
 }
 
 .patient-list {
