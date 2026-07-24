@@ -649,7 +649,7 @@ async function renderClinicBilling() {
 
   const sumInvoiced = invoiceRows.reduce((s, r) => s + r.total, 0);
   const sumCollected = (payments || []).filter((p) => paymentInPeriod(p, ym, billingAllTime)).reduce((s, p) => s + Number(p.amount || 0), 0);
-  const sumOutstanding = invoiceRows.reduce((s, r) => s + r.due, 0);
+  const sumOutstanding = Math.max(0, sumInvoiced - sumCollected);
   if (sumOutstanding > 0) {
     console.log("[Billings Outstanding]", filteredInvoices.map((inv) => {
       const { paid, due } = computeInvoiceTotals(inv, invoicePaymentsFor(inv));

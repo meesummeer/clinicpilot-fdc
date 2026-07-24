@@ -415,6 +415,8 @@ body {
 
 #patientBrowse {
   overflow-y: auto;
+  overflow-x: hidden;
+  height: calc(100vh - 180px);
   flex: 1;
   min-height: 0;
 }
