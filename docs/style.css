@@ -1488,3 +1488,23 @@ body {
     margin-left: 0 !important;
   }
 }
+
+/* SCROLL FIX */
+#patientBrowse {
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  height: calc(100vh - 200px) !important;
+  max-height: calc(100vh - 200px) !important;
+}
+
+#patientsSection.active {
+  display: flex !important;
+  flex-direction: column !important;
+  overflow: hidden !important;
+}
+
+.workspace {
+  flex: 1 !important;
+  overflow-y: auto !important;
+  height: calc(100vh - 56px) !important;
+}
