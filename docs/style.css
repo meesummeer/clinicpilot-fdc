@@ -216,10 +216,6 @@ body {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  height: calc(100vh - 56px);
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
 }
 
 .pane {
@@ -409,6 +405,7 @@ body {
 /* ----- Patients ----- */
 .patients-toolbar {
   margin-bottom: 16px;
+  flex: 0 0 auto;
 }
 
 .search-wide {
@@ -421,18 +418,28 @@ body {
   font: inherit;
 }
 
-#patientBrowse {
-  overflow-y: auto;
-  overflow-x: hidden;
-  flex: 1;
+#patientsSection.active {
+  display: flex;
+  flex-direction: column;
   min-height: 0;
   height: 100%;
+}
+
+#patientBrowse {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
 }
 
 .patient-list {
   display: flex;
   flex-direction: column;
   gap: 8px;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 
 .patient-row {
@@ -1487,24 +1494,4 @@ body {
   body:not(.printing-invoice) .main {
     margin-left: 0 !important;
   }
-}
-
-/* SCROLL FIX */
-#patientBrowse {
-  overflow-y: auto !important;
-  overflow-x: hidden !important;
-  height: calc(100vh - 200px) !important;
-  max-height: calc(100vh - 200px) !important;
-}
-
-#patientsSection.active {
-  display: flex !important;
-  flex-direction: column !important;
-  overflow: hidden !important;
-}
-
-.workspace {
-  flex: 1 !important;
-  overflow-y: auto !important;
-  height: calc(100vh - 56px) !important;
 }
