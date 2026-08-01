@@ -1,12 +1,12 @@
 import "./firebase.js";
 import { Timestamp } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-firestore.js";
 
-const authUser = await new Promise((resolve) => {
-  const unsub = window.authLib.onAuthStateChanged(window.auth, (u) => { unsub(); resolve(u); });
-});
-if (!authUser) {
-  window.location.href = "https://app.faseehdentalclinic.com/login.html";
-}
+(function checkAuth() {
+  const token = localStorage.getItem("cp_token");
+  if (!token) {
+    window.location.href = "https://app.faseehdentalclinic.com/login.html";
+  }
+})();
 
 const db = window.db;
 const {

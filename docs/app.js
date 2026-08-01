@@ -1032,15 +1032,12 @@ async function saveDrawer() {
 }
 
 window.addEventListener("DOMContentLoaded", async () => {
-  const user = await new Promise((resolve) => {
-    const unsub = window.authLib.onAuthStateChanged(window.auth, (u) => { unsub(); resolve(u); });
-  });
-  if (!user) { window.location.href = "https://app.faseehdentalclinic.com/login.html"; return; }
+  if (!localStorage.getItem("cp_token")) return;
   mountSettingsSection(); applyTheme(localStorage.getItem("cp_theme") || "cyan");
   const m = new Date(); $("#billingMonth").value = `${m.getFullYear()}-${String(m.getMonth() + 1).padStart(2, "0")}`;
   $$(".nav-btn[data-nav]").forEach((el) => (el.onclick = () => setActiveNav(el.dataset.nav)));
   const signOutBtn = document.querySelector(".sign-out-btn");
-  if (signOutBtn) { signOutBtn.onclick = () => { window.authLib.signOut(window.auth); window.location.href = "https://app.faseehdentalclinic.com/login.html"; }; }
+  if (signOutBtn) { signOutBtn.onclick = () => { localStorage.removeItem("cp_token"); window.location.href = "https://app.faseehdentalclinic.com/login.html"; }; }
   $("#prevMonth").onclick = () => { currentMonth.setMonth(currentMonth.getMonth() - 1); drawCalendar(); };
   $("#nextMonth").onclick = () => { currentMonth.setMonth(currentMonth.getMonth() + 1); drawCalendar(); };
   $("#newPatient").onclick = () => openNewPatientModal(); $("#addAppt").onclick = () => openAddAppointmentModal();
