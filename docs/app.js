@@ -1,6 +1,9 @@
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => Array.from(document.querySelectorAll(sel));
 
+const SHEETS_SYNC_URL = "https://script.google.com/macros/s/AKfycbzFoEzyIR9kkzoOg0eBTH7e1zVd9SUg8JPd3MNej8ho2ex-hWYTg8g2rdAhqdElk-18/exec";
+const SHEETS_SPREADSHEET_ID = "1oaO8HreX932X35WMHaeMlDEkSi-71rkL8pxYJjvFZXQ";
+
 let currentMonth = new Date();
 let currentPatient = null;
 let currentPatientKey = null;
@@ -432,12 +435,15 @@ function renderPatientList() {
   const q = String($("#search")?.value || "").toLowerCase();
   const list = $("#patientList"); if (!list) return;
   const source = Array.isArray(allPatients) ? allPatients : [];
-  const filtered = !q ? source : source.filter((p) => {
+  const filtered = !q ? source.slice() : source.filter((p) => {
     const n = String(p.name || p["Patient Name"] || "").toLowerCase();
     const ph = String(p.phone || p.Contact || "").toLowerCase();
     const mr = String(p.external_id || p["Case No."] || "").toLowerCase();
     return n.includes(q) || ph.includes(q) || mr.includes(q);
   });
+  if ($("#sortNewest")?.checked) {
+    filtered.sort((a, b) => (Number(b.created_at) || 0) - (Number(a.created_at) || 0));
+  }
   list.innerHTML = "";
   filtered.forEach((p) => {
     const key = patientKey(p); const row = document.createElement("button"); row.type = "button";
@@ -630,32 +636,50 @@ function buildBillingPatientLookup(patients) {
   return map;
 }
 
+async function fetchSheetInvoiceRows(ym, allTime) {
+  if (allTime) {
+    const monthsRes = await fetch(`${SHEETS_SYNC_URL}?action=listMonths`);
+    const months = await monthsRes.json();
+    const perMonth = await Promise.all(
+      months.map((tab) => fetch(`${SHEETS_SYNC_URL}?action=getInvoicesByTab&tab=${encodeURIComponent(tab)}`).then((r) => r.json()))
+    );
+    return perMonth.flat();
+  }
+  const res = await fetch(`${SHEETS_SYNC_URL}?action=getInvoices&month=${encodeURIComponent(ym)}`);
+  return res.json();
+}
+
 async function renderClinicBilling() {
   const monthEl = $("#billingMonth");
   if (monthEl && !monthEl.value) { const n = new Date(); monthEl.value = `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, "0")}`; }
   const ym = monthEl?.value || "";
-  const [invoices, payments, patients] = await withLoading(() => Promise.all([window.api.invoices.all(), window.api.payments.all(), window.api.patients.list()]));
+  const [sheetInvoiceRows, invoices, payments, patients] = await withLoading(() => Promise.all([
+    fetchSheetInvoiceRows(ym, billingAllTime).catch(() => []),
+    window.api.invoices.all(),
+    window.api.payments.all(),
+    window.api.patients.list()
+  ]));
   const pMap = buildBillingPatientLookup(patients);
   const payByInvoice = buildPaymentsByInvoice(payments);
   const invoicePaymentsFor = (inv) => payByInvoice.get(String(inv.id)) || [];
   const invById = new Map((invoices || []).map((inv) => [String(inv.id), inv]));
 
-  const filteredInvoices = (invoices || []).filter((inv) => invoiceCreatedInPeriod(inv, ym, billingAllTime));
-  const invoiceRows = filteredInvoices.map((inv) => {
-    const { paid, netTotal, due, status } = computeInvoiceTotals(inv, invoicePaymentsFor(inv));
-    const pidStr = String(inv.patient_id ?? "").trim();
-    return { sortTs: inv.created_at ? Number(inv.created_at) : 0, dateLabel: displayDateTs(inv.created_at), mr: pidStr, name: pMap.get(pidStr) || "—", procedure: inv.procedure || "", total: netTotal, paid, due, status };
-  }).sort((a, b) => b.sortTs - a.sortTs);
+  // Invoices table + KPI summary read from Google Sheets (the master for billing display).
+  const invoiceRows = (sheetInvoiceRows || []).map((r) => ({
+    sortKey: String(r.date || ""),
+    dateLabel: r.date || "",
+    mr: r.mr_no || "",
+    name: r.patient_name || "—",
+    procedure: r.procedure || "",
+    total: Number(r.invoice_total || 0),
+    paid: Number(r.paid || 0),
+    due: Number(r.due || 0),
+    status: r.status || "unpaid"
+  })).sort((a, b) => b.sortKey.localeCompare(a.sortKey));
 
   const sumInvoiced = invoiceRows.reduce((s, r) => s + r.total, 0);
-  const sumCollected = (payments || []).filter((p) => paymentInPeriod(p, ym, billingAllTime)).reduce((s, p) => s + Number(p.amount || 0), 0);
+  const sumCollected = invoiceRows.reduce((s, r) => s + r.paid, 0);
   const sumOutstanding = Math.max(0, sumInvoiced - sumCollected);
-  if (sumOutstanding > 0) {
-    console.log("[Billings Outstanding]", filteredInvoices.map((inv) => {
-      const { paid, due } = computeInvoiceTotals(inv, invoicePaymentsFor(inv));
-      return { id: inv.id, patient_id: inv.patient_id, cost: Number(inv.cost || 0), discount: Number(inv.discount || 0), paid, due };
-    }).filter((row) => row.due > 0));
-  }
   const periodPayments = (payments || []).filter((p) => paymentInPeriod(p, ym, billingAllTime));
 
   const fmt = (n) => Number(n || 0).toLocaleString();
@@ -672,7 +696,7 @@ async function renderClinicBilling() {
       tr.innerHTML = `<td>${r.dateLabel}</td><td>${escapeHtml(r.mr)}</td><td>${escapeHtml(r.name)}</td><td>${escapeHtml(r.procedure)}</td><td>${r.total.toLocaleString()}</td><td>${r.paid.toLocaleString()}</td><td>${r.due.toLocaleString()}</td><td>${statusBadge(r.status)}</td>`;
       body.appendChild(tr);
     });
-    if (!invoiceRows.length) body.innerHTML = '<tr><td colspan="8" class="patientSmall">No billing records for selected period.</td></tr>';
+    if (!invoiceRows.length) body.innerHTML = '<tr><td colspan="8" class="patientSmall">No billing records synced for this period yet. Click "Sync Invoices" to pull from the system.</td></tr>';
   }
 
   const payBody = $("#clinicBillingPaymentsBody");
@@ -696,6 +720,60 @@ async function renderClinicBilling() {
   $("#clinicBillingInvoicesPanel")?.classList.toggle("hidden", clinicBillingView !== "invoices");
   $("#clinicBillingPaymentsPanel")?.classList.toggle("hidden", clinicBillingView !== "payments");
   $$("#clinicBillingTabs .tab").forEach((t) => t.classList.toggle("active", t.dataset.billingView === clinicBillingView));
+}
+
+async function syncInvoicesToSheet() {
+  const monthEl = $("#billingMonth");
+  const ym = monthEl?.value || "";
+  if (!ym) return showToast("Pick a month first", "error");
+  const btn = $("#syncInvoicesBtn");
+  btn.disabled = true; btn.textContent = "Syncing...";
+  try {
+    const [invoices, payments, patients] = await Promise.all([
+      window.api.invoices.all(),
+      window.api.payments.all(),
+      window.api.patients.list()
+    ]);
+    const pMap = buildBillingPatientLookup(patients);
+    const payByInvoice = buildPaymentsByInvoice(payments);
+    const invoicePaymentsFor = (inv) => payByInvoice.get(String(inv.id)) || [];
+    const monthInvoices = (invoices || []).filter((inv) => invoiceCreatedInPeriod(inv, ym, false));
+    const rows = monthInvoices.map((inv) => {
+      const { paid, netTotal, due, status } = computeInvoiceTotals(inv, invoicePaymentsFor(inv));
+      const pidStr = String(inv.patient_id ?? "").trim();
+      return {
+        id: String(inv.id), mr_no: pidStr, patient_name: pMap.get(pidStr) || "",
+        date: displayDateTs(inv.created_at), procedure: inv.procedure || "",
+        invoice_total: netTotal, paid, due, status, notes: inv.notes || ""
+      };
+    });
+    const res = await fetch(SHEETS_SYNC_URL, { method: "POST", body: JSON.stringify({ action: "syncInvoices", month: ym, invoices: rows }) });
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error || "Sync failed");
+    showToast(`Synced ${data.count} invoice(s) to Sheets`);
+    await renderClinicBilling();
+  } catch (e) {
+    showToast(e.message || "Could not sync to Sheets", "error");
+  } finally {
+    btn.disabled = false; btn.textContent = "Sync Invoices";
+  }
+}
+
+async function openMonthlyReport() {
+  const monthEl = $("#billingMonth");
+  const ym = monthEl?.value || "";
+  if (!ym) return showToast("Pick a month first", "error");
+  const btn = $("#monthlyReportBtn");
+  btn.disabled = true;
+  try {
+    const res = await fetch(`${SHEETS_SYNC_URL}?action=getMonthGid&month=${encodeURIComponent(ym)}`);
+    const data = await res.json();
+    window.open(`https://docs.google.com/spreadsheets/d/${SHEETS_SPREADSHEET_ID}/edit#gid=${data.gid}`, "_blank");
+  } catch (e) {
+    showToast("Could not open report", "error");
+  } finally {
+    btn.disabled = false;
+  }
 }
 
 async function drawCalendar() {
@@ -954,21 +1032,27 @@ async function saveDrawer() {
 }
 
 window.addEventListener("DOMContentLoaded", async () => {
-  if (!localStorage.getItem("cp_token")) return;
+  const user = await new Promise((resolve) => {
+    const unsub = window.authLib.onAuthStateChanged(window.auth, (u) => { unsub(); resolve(u); });
+  });
+  if (!user) { window.location.href = "https://app.faseehdentalclinic.com/login.html"; return; }
   mountSettingsSection(); applyTheme(localStorage.getItem("cp_theme") || "cyan");
   const m = new Date(); $("#billingMonth").value = `${m.getFullYear()}-${String(m.getMonth() + 1).padStart(2, "0")}`;
   $$(".nav-btn[data-nav]").forEach((el) => (el.onclick = () => setActiveNav(el.dataset.nav)));
   const signOutBtn = document.querySelector(".sign-out-btn");
-  if (signOutBtn) { signOutBtn.onclick = () => { localStorage.removeItem("cp_token"); window.location.href = "https://app.faseehdentalclinic.com/login.html"; }; }
+  if (signOutBtn) { signOutBtn.onclick = () => { window.authLib.signOut(window.auth); window.location.href = "https://app.faseehdentalclinic.com/login.html"; }; }
   $("#prevMonth").onclick = () => { currentMonth.setMonth(currentMonth.getMonth() - 1); drawCalendar(); };
   $("#nextMonth").onclick = () => { currentMonth.setMonth(currentMonth.getMonth() + 1); drawCalendar(); };
   $("#newPatient").onclick = () => openNewPatientModal(); $("#addAppt").onclick = () => openAddAppointmentModal();
   $("#drawerClose").onclick = closeDrawer; $("#drawerSave").onclick = saveDrawer;
   $("#search").addEventListener("input", () => renderPatientList());
+  $("#sortNewest")?.addEventListener("change", () => renderPatientList());
   $("#backToPatients").onclick = () => { hidePatientProfile(); renderPatientList(); };
   $$("#patientTabs .tab").forEach((t) => (t.onclick = () => openTab(t.dataset.tab)));
   $("#billingMonth").onchange = renderClinicBilling;
   $("#billingAllTime").onclick = () => { billingAllTime = !billingAllTime; const btn = $("#billingAllTime"); btn.classList.toggle("active", billingAllTime); btn.textContent = billingAllTime ? "All Time (on)" : "All Time"; renderClinicBilling(); };
+  $("#syncInvoicesBtn").onclick = () => syncInvoicesToSheet();
+  $("#monthlyReportBtn").onclick = () => openMonthlyReport();
   $$("#clinicBillingTabs .tab").forEach((t) => {
     t.onclick = () => { clinicBillingView = t.dataset.billingView || "invoices"; renderClinicBilling(); };
   });

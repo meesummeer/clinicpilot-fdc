@@ -1,12 +1,12 @@
 import "./firebase.js";
 import { Timestamp } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-firestore.js";
 
-(function checkAuth() {
-  const token = localStorage.getItem("cp_token");
-  if (!token) {
-    window.location.href = "https://app.faseehdentalclinic.com/login.html";
-  }
-})();
+const authUser = await new Promise((resolve) => {
+  const unsub = window.authLib.onAuthStateChanged(window.auth, (u) => { unsub(); resolve(u); });
+});
+if (!authUser) {
+  window.location.href = "https://app.faseehdentalclinic.com/login.html";
+}
 
 const db = window.db;
 const {
@@ -159,15 +159,19 @@ window.api = {
       const age = p.age ?? "";
       const gender = p.gender ?? "";
       let docId;
+      let isNew = false;
       if (p.id != null && String(p.id).trim() !== "") {
         docId = String(p.id).trim();
       } else {
+        isNew = true;
         const ext = (p.external_id ?? "").trim();
         docId = ext || (await nextPatientDocId());
       }
+      const payload = { name, phone, address, age, gender };
+      if (isNew) payload.created_at = Date.now();
       await setDoc(
         doc(db, "patients", docId),
-        { name, phone, address, age, gender },
+        payload,
         { merge: true }
       );
       return patientFromSnap(await getDoc(doc(db, "patients", docId)));

@@ -32,7 +32,7 @@
       <div class="sidebar-bottom">
         <div class="sidebar-footer">
           <button type="button" class="nav-btn" data-nav="settings"><span class="nav-btn__label">Settings</span></button>
-          <button type="button" class="sign-out-btn" onclick="localStorage.removeItem('cp_token'); window.location.href='/login.html';">Sign Out</button>
+          <button type="button" class="sign-out-btn">Sign Out</button>
         </div>
         <div class="sidebar-powered">
           Powered by<br>
@@ -77,6 +77,7 @@
           <div id="patientBrowse">
             <div class="pane-head patients-toolbar">
               <input type="text" id="search" class="search-wide" placeholder="Search by name, phone, or MR number…" autocomplete="off">
+              <label class="sort-toggle"><input type="checkbox" id="sortNewest"> Newest first</label>
               <button type="button" id="newPatient" class="btn btn-primary">+ New Patient</button>
             </div>
             <div id="patientList" class="patient-list"></div>
@@ -104,6 +105,8 @@
             <div class="toolbar-left">
               <input type="month" id="billingMonth" class="input-month">
               <button type="button" id="billingAllTime" class="btn btn-secondary">All Time</button>
+              <button type="button" id="syncInvoicesBtn" class="btn btn-secondary">Sync Invoices</button>
+              <button type="button" id="monthlyReportBtn" class="btn btn-secondary">Monthly Report</button>
               <button type="button" id="downloadPdf" class="btn btn-secondary">Download PDF</button>
             </div>
           </div>
