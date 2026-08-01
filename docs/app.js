@@ -1050,7 +1050,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   $("#backupDataBtn").onclick = async () => { try { const res = await withLoading(() => window.api.patients.syncSheets()); if (res?.ok === false) throw new Error(res.error || "Backup failed"); window.alert(typeof res === "object" && res !== null ? JSON.stringify(res) : String(res ?? "Backup completed.")); } catch (e) { window.alert(`Backup failed: ${e.message || String(e)}`); } };
   $("#deleteAllPatients").onclick = async () => { if (!confirm("Delete ALL patients? This cannot be undone.")) return; await withLoading(() => window.api.patients.deleteAll()); showToast("All patients deleted"); await refreshPatientsCache(); renderPatientList(); };
   $("#editPatient").onclick = async () => { if (!currentPatient) return; const p = await withLoading(() => window.api.patients.get(currentPatient.id || currentPatient.external_id)); openDrawer("patient", p || currentPatient); };
-  $("#deletePatient").onclick = async () => { if (!currentPatient) return; if (!confirm(`Delete ${currentPatient.name || "this patient"}?`)) return; await window.api.patients.delete(currentPatient.id || currentPatient.external_id); showPatientBrowse(); showToast("Patient deleted"); await refreshPatientsCache(); renderPatientList(); };
+  $("#deletePatient").onclick = async () => { if (!currentPatient) return; if (!confirm(`Delete ${currentPatient.name || "this patient"}?`)) return; try { await window.api.patients.delete(currentPatient.id || currentPatient.external_id); showPatientBrowse(); showToast("Patient deleted"); await refreshPatientsCache(); renderPatientList(); } catch (e) { showToast(e.message || "Couldn't delete patient", "error"); } };
   $$(".themeSwatch").forEach((el) => { el.onclick = () => applyTheme(el.dataset.theme); });
   $("#billingAllTime").textContent = "All Time";
   await Promise.all([drawCalendar(), renderClinicBilling()]);
@@ -1113,17 +1113,22 @@ function openMultiServiceModal(pid, onSave) {
     const discountVal = Number(ov.querySelector("#msDiscount").value || 0);
     const dateStr = ov.querySelector("#msDate").value; const notes = ov.querySelector("#msNotes").value;
     const btn = ov.querySelector("#msSave"); btn.disabled = true; btn.textContent = "Saving...";
-    const invRes = await window.api.invoices.add({ patient_id: pid, procedure: items.map((i) => i.name).join(", "), cost: total, lab_cost: 0, discount: discountVal, notes, created_at: new Date(dateStr + "T00:00:00").getTime(), line_items: items });
-    const paidNow = Number(ov.querySelector("#msPaidAmount")?.value || 0);
-    if (paidNow > 0) {
-      await window.api.payments.add({
-        invoice_id: invRes.invoice.id,
-        patient_id: pid,
-        date: localYMD(new Date()),
-        amount: paidNow,
-        payment_mode: "Cash"
-      });
+    try {
+      const invRes = await window.api.invoices.add({ patient_id: pid, procedure: items.map((i) => i.name).join(", "), cost: total, lab_cost: 0, discount: discountVal, notes, created_at: new Date(dateStr + "T00:00:00").getTime(), line_items: items });
+      const paidNow = Number(ov.querySelector("#msPaidAmount")?.value || 0);
+      if (paidNow > 0) {
+        await window.api.payments.add({
+          invoice_id: invRes.invoice.id,
+          patient_id: pid,
+          date: localYMD(new Date()),
+          amount: paidNow,
+          payment_mode: "Cash"
+        });
+      }
+      ov.remove(); if (onSave) onSave();
+    } catch (e) {
+      showToast(e.message || "Could not save invoice", "error");
+      btn.disabled = false; btn.textContent = "Save";
     }
-    ov.remove(); if (onSave) onSave();
   };
 }

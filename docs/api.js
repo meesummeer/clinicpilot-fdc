@@ -37,7 +37,7 @@ function toMillis(v) {
 }
 
 function patientFromSnap(snap) {
-  if (!snap.exists) return null;
+  if (!snap.exists()) return null;
   const d = snap.data() || {};
   const id = snap.id;
   return {
@@ -179,7 +179,22 @@ window.api = {
     },
 
     async delete(id) {
-      await deleteDoc(doc(db, "patients", String(id)));
+      const pid = String(id);
+      const [invSnap, paySnap, apptSnap, noteSnap] = await Promise.all([
+        getDocs(query(collection(db, "invoices"), where("patient_id", "==", pid))),
+        getDocs(query(collection(db, "payments"), where("patient_id", "==", pid))),
+        getDocs(query(collection(db, "appointments"), where("patient_id", "==", pid))),
+        getDocs(query(collection(db, "notes"), where("patient_id", "==", pid)))
+      ]);
+      const attached = [];
+      if (invSnap.size) attached.push(`${invSnap.size} invoice(s)`);
+      if (paySnap.size) attached.push(`${paySnap.size} payment(s)`);
+      if (apptSnap.size) attached.push(`${apptSnap.size} appointment(s)`);
+      if (noteSnap.size) attached.push(`${noteSnap.size} note(s)`);
+      if (attached.length) {
+        throw new Error(`Can't delete this patient: they still have ${attached.join(", ")} attached. Remove those first.`);
+      }
+      await deleteDoc(doc(db, "patients", pid));
     },
 
     async deleteAll() {
@@ -233,7 +248,10 @@ window.api = {
     },
 
     async add(invPayload) {
-      const pid = invPayload.patient_id != null ? String(invPayload.patient_id) : "";
+      const pid = invPayload.patient_id != null ? String(invPayload.patient_id).trim() : "";
+      if (!pid) throw new Error("An invoice must have a patient attached.");
+      const patientSnap = await getDoc(doc(db, "patients", pid));
+      if (!patientSnap.exists()) throw new Error(`No patient found with MR number "${pid}". Check the number and try again.`);
       const createdTs =
         invPayload.created_at != null
           ? Timestamp.fromMillis(Number(invPayload.created_at))
@@ -257,6 +275,12 @@ window.api = {
     async update(inv) {
       const idStr = String(inv.id);
       const ref = doc(db, "invoices", idStr);
+      if (inv.patient_id != null) {
+        const pid = String(inv.patient_id).trim();
+        if (!pid) throw new Error("An invoice must have a patient attached.");
+        const patientSnap = await getDoc(doc(db, "patients", pid));
+        if (!patientSnap.exists()) throw new Error(`No patient found with MR number "${pid}". Check the number and try again.`);
+      }
       const patch = pruneUndefined({
         procedure: inv.procedure,
         lab_cost: Number(inv.lab_cost ?? 0),
@@ -396,7 +420,7 @@ window.api = {
 
     async get(id) {
       const snap = await getDoc(doc(db, "appointments", String(id)));
-      if (!snap.exists) return null;
+      if (!snap.exists()) return null;
       return mapApptSnap(snap);
     },
 
