@@ -350,6 +350,12 @@ function computeInvoiceTotals(inv, paymentsForInv = []) {
   return window.api.billing.computeInvoiceTotals(inv, paymentsForInv);
 }
 
+function toSafeNumber(v) {
+  if (v == null || v === "") return 0;
+  const n = Number(String(v).replace(/,/g, ""));
+  return Number.isFinite(n) ? n : 0;
+}
+
 function invoiceCreatedInPeriod(inv, ym, allTime) {
   if (allTime) return true;
   const d = inv.created_at ? localYMD(new Date(inv.created_at)) : "";
@@ -636,25 +642,11 @@ function buildBillingPatientLookup(patients) {
   return map;
 }
 
-async function fetchSheetInvoiceRows(ym, allTime) {
-  if (allTime) {
-    const monthsRes = await fetch(`${SHEETS_SYNC_URL}?action=listMonths`);
-    const months = await monthsRes.json();
-    const perMonth = await Promise.all(
-      months.map((tab) => fetch(`${SHEETS_SYNC_URL}?action=getInvoicesByTab&tab=${encodeURIComponent(tab)}`).then((r) => r.json()))
-    );
-    return perMonth.flat();
-  }
-  const res = await fetch(`${SHEETS_SYNC_URL}?action=getInvoices&month=${encodeURIComponent(ym)}`);
-  return res.json();
-}
-
 async function renderClinicBilling() {
   const monthEl = $("#billingMonth");
   if (monthEl && !monthEl.value) { const n = new Date(); monthEl.value = `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, "0")}`; }
   const ym = monthEl?.value || "";
-  const [sheetInvoiceRows, invoices, payments, patients] = await withLoading(() => Promise.all([
-    fetchSheetInvoiceRows(ym, billingAllTime).catch(() => []),
+  const [invoices, payments, patients] = await withLoading(() => Promise.all([
     window.api.invoices.all(),
     window.api.payments.all(),
     window.api.patients.list()
@@ -664,21 +656,15 @@ async function renderClinicBilling() {
   const invoicePaymentsFor = (inv) => payByInvoice.get(String(inv.id)) || [];
   const invById = new Map((invoices || []).map((inv) => [String(inv.id), inv]));
 
-  // Invoices table + KPI summary read from Google Sheets (the master for billing display).
-  const invoiceRows = (sheetInvoiceRows || []).map((r) => ({
-    sortKey: String(r.date || ""),
-    dateLabel: r.date || "",
-    mr: r.mr_no || "",
-    name: r.patient_name || "—",
-    procedure: r.procedure || "",
-    total: Number(r.invoice_total || 0),
-    paid: Number(r.paid || 0),
-    due: Number(r.due || 0),
-    status: r.status || "unpaid"
-  })).sort((a, b) => b.sortKey.localeCompare(a.sortKey));
+  const filteredInvoices = (invoices || []).filter((inv) => invoiceCreatedInPeriod(inv, ym, billingAllTime));
+  const invoiceRows = filteredInvoices.map((inv) => {
+    const { paid, netTotal, due, status } = computeInvoiceTotals(inv, invoicePaymentsFor(inv));
+    const pidStr = String(inv.patient_id ?? "").trim();
+    return { sortTs: inv.created_at ? Number(inv.created_at) : 0, dateLabel: displayDateTs(inv.created_at), mr: pidStr, name: pMap.get(pidStr) || "—", procedure: inv.procedure || "", total: netTotal, paid, due, status };
+  }).sort((a, b) => b.sortTs - a.sortTs);
 
-  const sumInvoiced = invoiceRows.reduce((s, r) => s + r.total, 0);
-  const sumCollected = invoiceRows.reduce((s, r) => s + r.paid, 0);
+  const sumInvoiced = invoiceRows.reduce((s, r) => s + (Number.isFinite(r.total) ? r.total : 0), 0);
+  const sumCollected = (payments || []).filter((p) => paymentInPeriod(p, ym, billingAllTime)).reduce((s, p) => s + toSafeNumber(p.amount), 0);
   const sumOutstanding = Math.max(0, sumInvoiced - sumCollected);
   const periodPayments = (payments || []).filter((p) => paymentInPeriod(p, ym, billingAllTime));
 
@@ -705,7 +691,7 @@ async function renderClinicBilling() {
       const inv = invById.get(String(p.invoice_id));
       const { status } = inv ? computeInvoiceTotals(inv, invoicePaymentsFor(inv)) : { status: "unpaid" };
       const pidStr = String(p.patient_id ?? inv?.patient_id ?? "").trim();
-      return { sortDate: String(p.date || ""), dateLabel: displayDateYYYYMMDD(p.date), mr: pidStr, name: pMap.get(pidStr) || "—", procedure: inv?.procedure || "—", amount: Number(p.amount || 0), mode: p.payment_mode || "—", status };
+      return { sortDate: String(p.date || ""), dateLabel: displayDateYYYYMMDD(p.date), mr: pidStr, name: pMap.get(pidStr) || "—", procedure: inv?.procedure || "—", amount: toSafeNumber(p.amount), mode: p.payment_mode || "—", status };
     }).sort((a, b) => b.sortDate.localeCompare(a.sortDate));
 
     payBody.innerHTML = "";
@@ -1053,6 +1039,173 @@ window.addEventListener("DOMContentLoaded", async () => {
   $$("#clinicBillingTabs .tab").forEach((t) => {
     t.onclick = () => { clinicBillingView = t.dataset.billingView || "invoices"; renderClinicBilling(); };
   });
+  async function openAnnualReport() {
+    const btn = $("#annualReportBtn");
+    btn.disabled = true; btn.textContent = "Building...";
+    try {
+      const [invoices, payments, patients] = await Promise.all([
+        window.api.invoices.all(),
+        window.api.payments.all(),
+        window.api.patients.list()
+      ]);
+
+      const now = new Date();
+      const invoiceDates = (invoices || []).map((inv) => Number(inv.created_at)).filter((ts) => Number.isFinite(ts) && ts > 0);
+      const yearStartMs = invoiceDates.length ? Math.min(...invoiceDates) : now.getTime();
+      const yearStart = new Date(yearStartMs);
+      const yearEndMs = now.getTime();
+      const periodLabel = `${yearStart.toLocaleDateString("en-GB", { month: "short", year: "numeric" })} \u2013 ${now.toLocaleDateString("en-GB", { month: "short", year: "numeric" })} (All Time)`;
+
+      const pMap = buildBillingPatientLookup(patients);
+      const payByInvoice = buildPaymentsByInvoice(payments);
+      const invoicePaymentsFor = (inv) => payByInvoice.get(String(inv.id)) || [];
+
+      let sumInvoiced = 0, sumCollected = 0;
+      const monthly = new Map();
+      const procedureStats = new Map();
+      const patientIdsSeen = new Set();
+
+      (invoices || []).forEach((inv) => {
+        const { netTotal } = computeInvoiceTotals(inv, invoicePaymentsFor(inv));
+        sumInvoiced += netTotal;
+        const ts = Number(inv.created_at || 0);
+        const d = new Date(ts);
+        const mk = Number.isFinite(ts) && ts > 0 ? `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}` : "unknown";
+        if (!monthly.has(mk)) monthly.set(mk, { invoiced: 0, collected: 0, count: 0 });
+        const m = monthly.get(mk);
+        m.invoiced += netTotal;
+        m.count += 1;
+
+        const pidStr = String(inv.patient_id ?? "").trim();
+        if (pidStr) patientIdsSeen.add(pidStr);
+
+        const procList = String(inv.procedure || "").split(",").map((s) => s.trim()).filter(Boolean);
+        const share = procList.length ? netTotal / procList.length : 0;
+        procList.forEach((proc) => {
+          if (!procedureStats.has(proc)) procedureStats.set(proc, { count: 0, revenue: 0 });
+          const ps = procedureStats.get(proc);
+          ps.count += 1;
+          ps.revenue += share;
+        });
+      });
+
+      (payments || []).forEach((p) => {
+        const amt = toSafeNumber(p.amount);
+        sumCollected += amt;
+        const d = new Date(p.date);
+        const valid = !Number.isNaN(d.getTime());
+        const mk = valid ? `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}` : "unknown";
+        if (!monthly.has(mk)) monthly.set(mk, { invoiced: 0, collected: 0, count: 0 });
+        monthly.get(mk).collected += amt;
+      });
+
+      const sumOutstanding = Math.max(0, sumInvoiced - sumCollected);
+      const collectionRate = sumInvoiced > 0 ? ((sumCollected / sumInvoiced) * 100).toFixed(1) : "0.0";
+
+      const hasCreatedAtData = (patients || []).some((p) => p.created_at);
+      const newPatientsTotal = (patients || []).filter((p) => p.created_at).length;
+
+      const monthlyRows = Array.from(monthly.entries())
+        .sort((a, b) => a[0].localeCompare(b[0]))
+        .map(([mk, m]) => {
+          const label = mk === "unknown" ? "Unknown date" : new Date(Number(mk.split("-")[0]), Number(mk.split("-")[1]) - 1, 1).toLocaleDateString("en-GB", { month: "long", year: "numeric" });
+          return `<tr><td>${label}</td><td>${m.count}</td><td>${m.invoiced.toLocaleString()}</td><td>${m.collected.toLocaleString()}</td></tr>`;
+        }).join("");
+
+      const procedureRows = Array.from(procedureStats.entries())
+        .sort((a, b) => b[1].count - a[1].count)
+        .slice(0, 25)
+        .map(([name, s]) => `<tr><td>${escapeHtml(name)}</td><td>${s.count}</td><td>${Math.round(s.revenue).toLocaleString()}</td></tr>`)
+        .join("");
+
+      const html = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>All Time Report</title>
+  <style>
+    body { font-family: Arial, sans-serif; color: #111; margin: 0; padding: 32px; }
+    .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 24px; }
+    .clinic-name { font-size: 20px; font-weight: 700; color: #2d3748; }
+    .clinic-sub { font-size: 12px; color: #6b7280; margin-top: 2px; }
+    .report-title { font-size: 14px; font-weight: 600; color: #374151; text-align: right; }
+    .report-period { font-size: 12px; color: #6b7280; text-align: right; }
+    hr { border: none; border-top: 2px solid #009688; margin: 0 0 20px; }
+    .kpis { display: flex; gap: 16px; margin-bottom: 24px; }
+    .kpi { flex: 1; background: #f8fafc; border: 1px solid #e5e7eb; border-radius: 8px; padding: 12px 16px; }
+    .kpi-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #6b7280; }
+    .kpi-value { font-size: 20px; font-weight: 700; margin-top: 4px; }
+    h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.04em; color: #374151; margin: 28px 0 10px; border-bottom: 1px solid #e5e7eb; padding-bottom: 6px; }
+    table { width: 100%; border-collapse: collapse; }
+    thead tr { background: #2d3748; color: white; }
+    thead th { padding: 8px 10px; text-align: left; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; }
+    td { padding: 7px 10px; border-bottom: 1px solid #e5e7eb; font-size: 12px; }
+    tbody tr:nth-child(even) { background: #f8fafc; }
+    .footer { margin-top: 24px; font-size: 10px; color: #9ca3af; text-align: center; }
+    .note { font-size: 10px; color: #9ca3af; margin-top: 6px; }
+    @media print { body { padding: 16px; } h2 { page-break-after: avoid; } tr { page-break-inside: avoid; } }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div>
+      <div class="clinic-name">Faseeh Dental Clinic</div>
+      <div class="clinic-sub">Dr. Faseeh Ur Rehman | BDS | RDS</div>
+      <div class="clinic-sub">+923211507943 | faseehdentalclinic@gmail.com</div>
+    </div>
+    <div>
+      <div class="report-title">ALL TIME REPORT</div>
+      <div class="report-period">Period: ${periodLabel}</div>
+      <div class="report-period">Generated: ${new Date().toLocaleDateString("en-GB")}</div>
+    </div>
+  </div>
+  <hr>
+
+  <div class="kpis">
+    <div class="kpi"><div class="kpi-label">Total Invoiced</div><div class="kpi-value">PKR ${Math.round(sumInvoiced).toLocaleString()}</div></div>
+    <div class="kpi"><div class="kpi-label">Total Collected</div><div class="kpi-value">PKR ${Math.round(sumCollected).toLocaleString()}</div></div>
+    <div class="kpi"><div class="kpi-label">Outstanding</div><div class="kpi-value">PKR ${Math.round(sumOutstanding).toLocaleString()}</div></div>
+    <div class="kpi"><div class="kpi-label">Collection Rate</div><div class="kpi-value">${collectionRate}%</div></div>
+  </div>
+
+  <h2>Monthly Breakdown</h2>
+  <table>
+    <thead><tr><th>Month</th><th>Invoices</th><th>Invoiced (PKR)</th><th>Collected (PKR)</th></tr></thead>
+    <tbody>${monthlyRows || '<tr><td colspan="4">No data.</td></tr>'}</tbody>
+  </table>
+
+  <h2>Procedures \u2014 By Volume</h2>
+  <table>
+    <thead><tr><th>Procedure</th><th>Times Performed</th><th>Estimated Revenue (PKR)</th></tr></thead>
+    <tbody>${procedureRows || '<tr><td colspan="3">No data.</td></tr>'}</tbody>
+  </table>
+  <div class="note">Revenue is split evenly across procedures listed on the same invoice, so multi-service invoices contribute a proportional share to each procedure rather than the full invoice amount to each.</div>
+
+  <h2>Patients</h2>
+  <table>
+    <thead><tr><th>Metric</th><th>Value</th></tr></thead>
+    <tbody>
+      <tr><td>Unique patients with at least one invoice</td><td>${patientIdsSeen.size}</td></tr>
+      <tr><td>Patients with a recorded signup date</td><td>${hasCreatedAtData ? newPatientsTotal : "N/A \u2014 not tracked before this feature was added"}</td></tr>
+    </tbody>
+  </table>
+
+  <div class="footer">Powered by CyberHealth Solutions | Meesum Mir \u2014 Generated ${new Date().toLocaleString("en-GB")}</div>
+  <script>window.onload = () => { window.print(); }<\/script>
+</body>
+</html>`;
+
+      const win = window.open("", "_blank");
+      win.document.write(html);
+      win.document.close();
+    } catch (e) {
+      showToast(e.message || "Could not build report", "error");
+    } finally {
+      btn.disabled = false; btn.textContent = "All Time Report";
+    }
+  }
+  $("#annualReportBtn").onclick = () => openAnnualReport();
+
   $("#downloadPdf").onclick = () => {
     const ym = $("#billingMonth").value;
     const label = billingAllTime ? "All Time" : ym;

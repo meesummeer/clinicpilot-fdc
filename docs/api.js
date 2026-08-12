@@ -63,10 +63,16 @@ function mapInvoiceSnapshot(s) {
   };
 }
 
+function toSafeNumber(v) {
+  if (v == null || v === "") return 0;
+  const n = Number(String(v).replace(/,/g, ""));
+  return Number.isFinite(n) ? n : 0;
+}
+
 function computeInvoiceTotals(inv, paymentsForInv = []) {
-  const paid = (paymentsForInv || []).reduce((s, p) => s + Number(p.amount || 0), 0);
-  const grossTotal = Number(inv.cost || 0);
-  const discount = Number(inv.discount || 0);
+  const paid = (paymentsForInv || []).reduce((s, p) => s + toSafeNumber(p.amount), 0);
+  const grossTotal = toSafeNumber(inv.cost);
+  const discount = toSafeNumber(inv.discount);
   const netTotal = Math.max(0, grossTotal - discount);
   const due = Math.max(0, netTotal - paid);
   const tol = 1e-6;
