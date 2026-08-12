@@ -664,7 +664,7 @@ async function renderClinicBilling() {
   }).sort((a, b) => b.sortTs - a.sortTs);
 
   const sumInvoiced = invoiceRows.reduce((s, r) => s + (Number.isFinite(r.total) ? r.total : 0), 0);
-  const sumCollected = (payments || []).filter((p) => paymentInPeriod(p, ym, billingAllTime)).reduce((s, p) => s + toSafeNumber(p.amount), 0);
+  const sumCollected = invoiceRows.reduce((s, r) => s + (Number.isFinite(r.paid) ? r.paid : 0), 0);
   const sumOutstanding = invoiceRows.reduce((s, r) => s + (Number.isFinite(r.due) ? r.due : 0), 0);
   const periodPayments = (payments || []).filter((p) => paymentInPeriod(p, ym, billingAllTime));
 
@@ -1084,15 +1084,17 @@ window.addEventListener("DOMContentLoaded", async () => {
       const patientIdsSeen = new Set();
 
       (invoices || []).forEach((inv) => {
-        const { netTotal, due } = computeInvoiceTotals(inv, invoicePaymentsFor(inv));
+        const { netTotal, due, paid } = computeInvoiceTotals(inv, invoicePaymentsFor(inv));
         sumInvoiced += netTotal;
         sumOutstanding += Number.isFinite(due) ? due : 0;
+        sumCollected += Number.isFinite(paid) ? paid : 0;
         const ts = Number(inv.created_at || 0);
         const d = new Date(ts);
         const mk = Number.isFinite(ts) && ts > 0 ? `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}` : "unknown";
         if (!monthly.has(mk)) monthly.set(mk, { invoiced: 0, collected: 0, count: 0 });
         const m = monthly.get(mk);
         m.invoiced += netTotal;
+        m.collected += Number.isFinite(paid) ? paid : 0;
         m.count += 1;
 
         const pidStr = String(inv.patient_id ?? "").trim();
@@ -1106,16 +1108,6 @@ window.addEventListener("DOMContentLoaded", async () => {
           ps.count += 1;
           ps.revenue += share;
         });
-      });
-
-      (payments || []).forEach((p) => {
-        const amt = toSafeNumber(p.amount);
-        sumCollected += amt;
-        const d = new Date(p.date);
-        const valid = !Number.isNaN(d.getTime());
-        const mk = valid ? `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}` : "unknown";
-        if (!monthly.has(mk)) monthly.set(mk, { invoiced: 0, collected: 0, count: 0 });
-        monthly.get(mk).collected += amt;
       });
 
       const collectionRate = sumInvoiced > 0 ? ((sumCollected / sumInvoiced) * 100).toFixed(1) : "0.0";
