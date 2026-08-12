@@ -665,7 +665,7 @@ async function renderClinicBilling() {
 
   const sumInvoiced = invoiceRows.reduce((s, r) => s + (Number.isFinite(r.total) ? r.total : 0), 0);
   const sumCollected = (payments || []).filter((p) => paymentInPeriod(p, ym, billingAllTime)).reduce((s, p) => s + toSafeNumber(p.amount), 0);
-  const sumOutstanding = Math.max(0, sumInvoiced - sumCollected);
+  const sumOutstanding = invoiceRows.reduce((s, r) => s + (Number.isFinite(r.due) ? r.due : 0), 0);
   const periodPayments = (payments || []).filter((p) => paymentInPeriod(p, ym, billingAllTime));
 
   const fmt = (n) => Number(n || 0).toLocaleString();
@@ -1078,14 +1078,15 @@ window.addEventListener("DOMContentLoaded", async () => {
       const payByInvoice = buildPaymentsByInvoice(payments);
       const invoicePaymentsFor = (inv) => payByInvoice.get(String(inv.id)) || [];
 
-      let sumInvoiced = 0, sumCollected = 0;
+      let sumInvoiced = 0, sumCollected = 0, sumOutstanding = 0;
       const monthly = new Map();
       const procedureStats = new Map();
       const patientIdsSeen = new Set();
 
       (invoices || []).forEach((inv) => {
-        const { netTotal } = computeInvoiceTotals(inv, invoicePaymentsFor(inv));
+        const { netTotal, due } = computeInvoiceTotals(inv, invoicePaymentsFor(inv));
         sumInvoiced += netTotal;
+        sumOutstanding += Number.isFinite(due) ? due : 0;
         const ts = Number(inv.created_at || 0);
         const d = new Date(ts);
         const mk = Number.isFinite(ts) && ts > 0 ? `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}` : "unknown";
@@ -1117,7 +1118,6 @@ window.addEventListener("DOMContentLoaded", async () => {
         monthly.get(mk).collected += amt;
       });
 
-      const sumOutstanding = Math.max(0, sumInvoiced - sumCollected);
       const collectionRate = sumInvoiced > 0 ? ((sumCollected / sumInvoiced) * 100).toFixed(1) : "0.0";
 
       const hasCreatedAtData = (patients || []).some((p) => p.created_at);
