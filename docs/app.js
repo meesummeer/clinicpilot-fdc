@@ -709,9 +709,6 @@ async function renderClinicBilling() {
 }
 
 async function syncInvoicesToSheet() {
-  const monthEl = $("#billingMonth");
-  const ym = monthEl?.value || "";
-  if (!ym) return showToast("Pick a month first", "error");
   const btn = $("#syncInvoicesBtn");
   btn.disabled = true; btn.textContent = "Syncing...";
   try {
@@ -723,20 +720,41 @@ async function syncInvoicesToSheet() {
     const pMap = buildBillingPatientLookup(patients);
     const payByInvoice = buildPaymentsByInvoice(payments);
     const invoicePaymentsFor = (inv) => payByInvoice.get(String(inv.id)) || [];
-    const monthInvoices = (invoices || []).filter((inv) => invoiceCreatedInPeriod(inv, ym, false));
-    const rows = monthInvoices.map((inv) => {
-      const { paid, netTotal, due, status } = computeInvoiceTotals(inv, invoicePaymentsFor(inv));
-      const pidStr = String(inv.patient_id ?? "").trim();
-      return {
-        id: String(inv.id), mr_no: pidStr, patient_name: pMap.get(pidStr) || "",
-        date: displayDateTs(inv.created_at), procedure: inv.procedure || "",
-        invoice_total: netTotal, paid, due, status, notes: inv.notes || ""
-      };
+
+    const byMonth = new Map();
+    (invoices || []).forEach((inv) => {
+      const ts = Number(inv.created_at);
+      if (!Number.isFinite(ts) || ts <= 0) return;
+      const d = new Date(ts);
+      const ym = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+      if (!byMonth.has(ym)) byMonth.set(ym, []);
+      byMonth.get(ym).push(inv);
     });
-    const res = await fetch(SHEETS_SYNC_URL, { method: "POST", body: JSON.stringify({ action: "syncInvoices", month: ym, invoices: rows }) });
-    const data = await res.json();
-    if (!data.ok) throw new Error(data.error || "Sync failed");
-    showToast(`Synced ${data.count} invoice(s) to Sheets`);
+
+    const months = Array.from(byMonth.keys()).sort();
+    if (!months.length) { showToast("No invoices to sync", "error"); return; }
+
+    let totalSynced = 0;
+    for (let i = 0; i < months.length; i++) {
+      const ym = months[i];
+      btn.textContent = `Syncing ${i + 1}/${months.length}...`;
+      const monthInvoices = byMonth.get(ym);
+      const rows = monthInvoices.map((inv) => {
+        const { paid, netTotal, due, status } = computeInvoiceTotals(inv, invoicePaymentsFor(inv));
+        const pidStr = String(inv.patient_id ?? "").trim();
+        return {
+          id: String(inv.id), mr_no: pidStr, patient_name: pMap.get(pidStr) || "",
+          date: displayDateTs(inv.created_at), procedure: inv.procedure || "",
+          invoice_total: netTotal, paid, due, status, notes: inv.notes || ""
+        };
+      });
+      const res = await fetch(SHEETS_SYNC_URL, { method: "POST", body: JSON.stringify({ action: "syncInvoices", month: ym, invoices: rows }) });
+      const data = await res.json();
+      if (!data.ok) throw new Error(`${ym}: ${data.error || "sync failed"}`);
+      totalSynced += data.count;
+    }
+
+    showToast(`Synced ${totalSynced} invoice(s) across ${months.length} month(s) to Sheets`);
     await renderClinicBilling();
   } catch (e) {
     showToast(e.message || "Could not sync to Sheets", "error");
