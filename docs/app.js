@@ -1057,82 +1057,75 @@ window.addEventListener("DOMContentLoaded", async () => {
   $$("#clinicBillingTabs .tab").forEach((t) => {
     t.onclick = () => { clinicBillingView = t.dataset.billingView || "invoices"; renderClinicBilling(); };
   });
-  async function openAnnualReport() {
-    const btn = $("#annualReportBtn");
-    btn.disabled = true; btn.textContent = "Building...";
-    try {
-      const [invoices, payments, patients] = await Promise.all([
-        window.api.invoices.all(),
-        window.api.payments.all(),
-        window.api.patients.list()
-      ]);
+  async function buildAndOpenReport(startMs, endMs, periodLabel, reportTitleText) {
+    const [invoices, payments, patients] = await Promise.all([
+      window.api.invoices.all(),
+      window.api.payments.all(),
+      window.api.patients.list()
+    ]);
 
-      const now = new Date();
-      const invoiceDates = (invoices || []).map((inv) => Number(inv.created_at)).filter((ts) => Number.isFinite(ts) && ts > 0);
-      const yearStartMs = invoiceDates.length ? Math.min(...invoiceDates) : now.getTime();
-      const yearStart = new Date(yearStartMs);
-      const yearEndMs = now.getTime();
-      const periodLabel = `${yearStart.toLocaleDateString("en-GB", { month: "short", year: "numeric" })} \u2013 ${now.toLocaleDateString("en-GB", { month: "short", year: "numeric" })} (All Time)`;
+    const payByInvoice = buildPaymentsByInvoice(payments);
+    const invoicePaymentsFor = (inv) => payByInvoice.get(String(inv.id)) || [];
 
-      const pMap = buildBillingPatientLookup(patients);
-      const payByInvoice = buildPaymentsByInvoice(payments);
-      const invoicePaymentsFor = (inv) => payByInvoice.get(String(inv.id)) || [];
+    let sumInvoiced = 0, sumCollected = 0, sumOutstanding = 0;
+    const monthly = new Map();
+    const procedureStats = new Map();
+    const patientIdsSeen = new Set();
 
-      let sumInvoiced = 0, sumCollected = 0, sumOutstanding = 0;
-      const monthly = new Map();
-      const procedureStats = new Map();
-      const patientIdsSeen = new Set();
+    (invoices || []).forEach((inv) => {
+      const ts = Number(inv.created_at || 0);
+      if (!Number.isFinite(ts) || ts < startMs || ts > endMs) return;
+      const { netTotal, due, paid } = computeInvoiceTotals(inv, invoicePaymentsFor(inv));
+      sumInvoiced += netTotal;
+      sumOutstanding += Number.isFinite(due) ? due : 0;
+      sumCollected += Number.isFinite(paid) ? paid : 0;
+      const d = new Date(ts);
+      const mk = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+      if (!monthly.has(mk)) monthly.set(mk, { invoiced: 0, collected: 0, count: 0 });
+      const m = monthly.get(mk);
+      m.invoiced += netTotal;
+      m.collected += Number.isFinite(paid) ? paid : 0;
+      m.count += 1;
 
-      (invoices || []).forEach((inv) => {
-        const { netTotal, due, paid } = computeInvoiceTotals(inv, invoicePaymentsFor(inv));
-        sumInvoiced += netTotal;
-        sumOutstanding += Number.isFinite(due) ? due : 0;
-        sumCollected += Number.isFinite(paid) ? paid : 0;
-        const ts = Number(inv.created_at || 0);
-        const d = new Date(ts);
-        const mk = Number.isFinite(ts) && ts > 0 ? `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}` : "unknown";
-        if (!monthly.has(mk)) monthly.set(mk, { invoiced: 0, collected: 0, count: 0 });
-        const m = monthly.get(mk);
-        m.invoiced += netTotal;
-        m.collected += Number.isFinite(paid) ? paid : 0;
-        m.count += 1;
+      const pidStr = String(inv.patient_id ?? "").trim();
+      if (pidStr) patientIdsSeen.add(pidStr);
 
-        const pidStr = String(inv.patient_id ?? "").trim();
-        if (pidStr) patientIdsSeen.add(pidStr);
-
-        const procList = String(inv.procedure || "").split(",").map((s) => s.trim()).filter(Boolean);
-        const share = procList.length ? netTotal / procList.length : 0;
-        procList.forEach((proc) => {
-          if (!procedureStats.has(proc)) procedureStats.set(proc, { count: 0, revenue: 0 });
-          const ps = procedureStats.get(proc);
-          ps.count += 1;
-          ps.revenue += share;
-        });
+      const procList = String(inv.procedure || "").split(",").map((s) => s.trim()).filter(Boolean);
+      const share = procList.length ? netTotal / procList.length : 0;
+      procList.forEach((proc) => {
+        if (!procedureStats.has(proc)) procedureStats.set(proc, { count: 0, revenue: 0 });
+        const ps = procedureStats.get(proc);
+        ps.count += 1;
+        ps.revenue += share;
       });
+    });
 
-      const collectionRate = sumInvoiced > 0 ? ((sumCollected / sumInvoiced) * 100).toFixed(1) : "0.0";
+    const collectionRate = sumInvoiced > 0 ? ((sumCollected / sumInvoiced) * 100).toFixed(1) : "0.0";
 
-      const hasCreatedAtData = (patients || []).some((p) => p.created_at);
-      const newPatientsTotal = (patients || []).filter((p) => p.created_at).length;
+    const hasCreatedAtData = (patients || []).some((p) => p.created_at);
+    const newPatientsInRange = (patients || []).filter((p) => {
+      const ts = Number(p.created_at);
+      return Number.isFinite(ts) && ts >= startMs && ts <= endMs;
+    }).length;
 
-      const monthlyRows = Array.from(monthly.entries())
-        .sort((a, b) => a[0].localeCompare(b[0]))
-        .map(([mk, m]) => {
-          const label = mk === "unknown" ? "Unknown date" : new Date(Number(mk.split("-")[0]), Number(mk.split("-")[1]) - 1, 1).toLocaleDateString("en-GB", { month: "long", year: "numeric" });
-          return `<tr><td>${label}</td><td>${m.count}</td><td>${m.invoiced.toLocaleString()}</td><td>${m.collected.toLocaleString()}</td></tr>`;
-        }).join("");
+    const monthlyRows = Array.from(monthly.entries())
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .map(([mk, m]) => {
+        const label = new Date(Number(mk.split("-")[0]), Number(mk.split("-")[1]) - 1, 1).toLocaleDateString("en-GB", { month: "long", year: "numeric" });
+        return `<tr><td>${label}</td><td>${m.count}</td><td>${m.invoiced.toLocaleString()}</td><td>${m.collected.toLocaleString()}</td></tr>`;
+      }).join("");
 
-      const procedureRows = Array.from(procedureStats.entries())
-        .sort((a, b) => b[1].count - a[1].count)
-        .slice(0, 25)
-        .map(([name, s]) => `<tr><td>${escapeHtml(name)}</td><td>${s.count}</td><td>${Math.round(s.revenue).toLocaleString()}</td></tr>`)
-        .join("");
+    const procedureRows = Array.from(procedureStats.entries())
+      .sort((a, b) => b[1].count - a[1].count)
+      .slice(0, 25)
+      .map(([name, s]) => `<tr><td>${escapeHtml(name)}</td><td>${s.count}</td><td>${Math.round(s.revenue).toLocaleString()}</td></tr>`)
+      .join("");
 
-      const html = `<!DOCTYPE html>
+    const html = `<!DOCTYPE html>
 <html>
 <head>
   <meta charset="utf-8">
-  <title>All Time Report</title>
+  <title>${escapeHtml(reportTitleText)}</title>
   <style>
     body { font-family: Arial, sans-serif; color: #111; margin: 0; padding: 32px; }
     .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 24px; }
@@ -1164,7 +1157,7 @@ window.addEventListener("DOMContentLoaded", async () => {
       <div class="clinic-sub">+923211507943 | faseehdentalclinic@gmail.com</div>
     </div>
     <div>
-      <div class="report-title">ALL TIME REPORT</div>
+      <div class="report-title">${escapeHtml(reportTitleText)}</div>
       <div class="report-period">Period: ${periodLabel}</div>
       <div class="report-period">Generated: ${new Date().toLocaleDateString("en-GB")}</div>
     </div>
@@ -1196,7 +1189,7 @@ window.addEventListener("DOMContentLoaded", async () => {
     <thead><tr><th>Metric</th><th>Value</th></tr></thead>
     <tbody>
       <tr><td>Unique patients with at least one invoice</td><td>${patientIdsSeen.size}</td></tr>
-      <tr><td>Patients with a recorded signup date</td><td>${hasCreatedAtData ? newPatientsTotal : "N/A \u2014 not tracked before this feature was added"}</td></tr>
+      <tr><td>New patients in this period</td><td>${hasCreatedAtData ? newPatientsInRange : "N/A \u2014 not tracked before this feature was added"}</td></tr>
     </tbody>
   </table>
 
@@ -1205,9 +1198,22 @@ window.addEventListener("DOMContentLoaded", async () => {
 </body>
 </html>`;
 
-      const win = window.open("", "_blank");
-      win.document.write(html);
-      win.document.close();
+    const win = window.open("", "_blank");
+    win.document.write(html);
+    win.document.close();
+  }
+
+  async function openAnnualReport() {
+    const btn = $("#annualReportBtn");
+    btn.disabled = true; btn.textContent = "Building...";
+    try {
+      const invoices = await window.api.invoices.all();
+      const now = new Date();
+      const invoiceDates = (invoices || []).map((inv) => Number(inv.created_at)).filter((ts) => Number.isFinite(ts) && ts > 0);
+      const startMs = invoiceDates.length ? Math.min(...invoiceDates) : now.getTime();
+      const endMs = now.getTime();
+      const periodLabel = `${new Date(startMs).toLocaleDateString("en-GB", { month: "short", year: "numeric" })} \u2013 ${now.toLocaleDateString("en-GB", { month: "short", year: "numeric" })} (All Time)`;
+      await buildAndOpenReport(startMs, endMs, periodLabel, "ALL TIME REPORT");
     } catch (e) {
       showToast(e.message || "Could not build report", "error");
     } finally {
@@ -1215,6 +1221,49 @@ window.addEventListener("DOMContentLoaded", async () => {
     }
   }
   $("#annualReportBtn").onclick = () => openAnnualReport();
+
+  function openCustomReportModal() {
+    const ov = document.createElement("div"); ov.className = "modal";
+    const now = new Date();
+    const defaultMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+    ov.innerHTML = `<div class="modal-content modal-content--payment-record" role="dialog" aria-labelledby="reportModalTitle">
+      <h2 id="reportModalTitle" class="payment-modal-title">Generate Report</h2>
+      <p class="payment-modal-sub">Choose the date range to include.</p>
+      <div class="payment-form-stack">
+        <div><label for="reportFromMonth">From</label><input id="reportFromMonth" type="month" value="${defaultMonth}"></div>
+        <div><label for="reportToMonth">To</label><input id="reportToMonth" type="month" value="${defaultMonth}"></div>
+      </div>
+      <div class="payment-actions-stack">
+        <button type="button" id="reportGenerateBtn" class="btn btn-primary">Generate Report</button>
+        <button type="button" id="reportCancelBtn" class="btn btn-secondary">Cancel</button>
+      </div>
+    </div>`;
+    document.body.appendChild(ov);
+    const close = () => ov.remove();
+    ov.querySelector("#reportCancelBtn").onclick = close;
+    ov.addEventListener("click", (e) => { if (e.target === ov) close(); });
+    ov.querySelector("#reportGenerateBtn").onclick = async () => {
+      const fromVal = ov.querySelector("#reportFromMonth").value;
+      const toVal = ov.querySelector("#reportToMonth").value;
+      if (!fromVal || !toVal) { showToast("Pick both a From and To month", "error"); return; }
+      const [fy, fm] = fromVal.split("-").map(Number);
+      const [ty, tm] = toVal.split("-").map(Number);
+      const startMs = new Date(fy, fm - 1, 1).getTime();
+      const endMs = new Date(ty, tm, 0, 23, 59, 59, 999).getTime();
+      if (startMs > endMs) { showToast('"From" must be before "To"', "error"); return; }
+      const periodLabel = `${new Date(startMs).toLocaleDateString("en-GB", { month: "short", year: "numeric" })} \u2013 ${new Date(endMs).toLocaleDateString("en-GB", { month: "short", year: "numeric" })}`;
+      const genBtn = ov.querySelector("#reportGenerateBtn");
+      genBtn.disabled = true; genBtn.textContent = "Building...";
+      try {
+        await buildAndOpenReport(startMs, endMs, periodLabel, "BILLING REPORT");
+        close();
+      } catch (e) {
+        showToast(e.message || "Could not build report", "error");
+        genBtn.disabled = false; genBtn.textContent = "Generate Report";
+      }
+    };
+  }
+  $("#generateReportBtn").onclick = () => openCustomReportModal();
 
   $("#downloadPdf").onclick = () => {
     const ym = $("#billingMonth").value;
